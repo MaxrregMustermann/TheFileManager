@@ -6,6 +6,7 @@
 plugins {
     alias libs.plugins.android.application
     alias libs.plugins.kotlin.parcelize
+    alias libs.plugins.ksp
 }
 
 apply from: '../signing.gradle'
@@ -186,7 +187,29 @@ dependencies {
     implementation libs.coil.svg
     implementation libs.coil.video
 
+    // Parses and rewrites binary AndroidManifest.xml and resources.arsc when merging split APKs.
+    implementation libs.arsclib
+    // Signs the merged APK produced by the split APK merger.
+    implementation libs.apksig
+
+    // Room keeps the file name index that makes search fast.
+    implementation libs.androidx.room.runtime
+    implementation libs.androidx.room.ktx
+    ksp libs.androidx.room.compiler
+    // BundledSQLiteDriver ships a SQLite new enough for FTS5 and its trigram tokenizer, unlike the
+    // SQLite that the oldest supported Android releases provide.
+    implementation libs.androidx.sqlite.bundled
+
+    testImplementation libs.junit
+    testImplementation libs.kotlinx.coroutines.test
+    // The same bundled SQLite for JVM unit tests, so index queries run against real FTS5 instead of
+    // a mock.
+    testImplementation libs.androidx.sqlite.bundled.jvm
+    testImplementation libs.androidx.sqlite.jvm
+
+//#ifdef NONFREE
     implementation platform(libs.firebase.bom)
     implementation libs.firebase.analytics
     implementation libs.firebase.crashlytics.ndk
+//#endif
 }

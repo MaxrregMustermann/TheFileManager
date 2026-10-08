@@ -15,6 +15,7 @@ import me.zhanghai.android.files.filejob.fileJobNotificationTemplate
 import me.zhanghai.android.files.ftpserver.ftpServerServiceNotificationTemplate
 import me.zhanghai.android.files.hiddenapi.HiddenApi
 import me.zhanghai.android.files.provider.FileSystemProviders
+import me.zhanghai.android.files.search.SearchIndex
 import me.zhanghai.android.files.settings.Settings
 import me.zhanghai.android.files.storage.FtpServerAuthenticator
 import me.zhanghai.android.files.storage.SftpServerAuthenticator
@@ -35,6 +36,7 @@ val appInitializers = listOf(
     ::initializeWebViewDebugging,
     ::initializeCoil,
     ::initializeFileSystemProviders,
+    ::initializeSearchIndex,
     ::upgradeApp,
     ::initializeLiveDataObjects,
     ::initializeCustomTheme,
@@ -50,6 +52,10 @@ private fun initializeFirebase() {
 
 private fun disableHiddenApiChecks() {
     HiddenApi.disableHiddenApiChecks()
+}
+
+private fun initializeSearchIndex() {
+    SearchIndex.initialize(application)
 }
 
 private fun initializeWebViewDebugging() {

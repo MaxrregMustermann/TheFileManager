@@ -116,7 +116,6 @@ androidx-room-runtime = { module = "androidx.room:room-runtime", version.ref = "
 androidx-sqlite-bundled = { module = "androidx.sqlite:sqlite-bundled", version.ref = "sqlite" }
 # The same bundled SQLite for JVM unit tests, so index queries run against real FTS5 in tests.
 androidx-sqlite-bundled-jvm = { module = "androidx.sqlite:sqlite-bundled-jvm", version.ref = "sqlite" }
-androidx-sqlite-framework-jvm = { module = "androidx.sqlite:sqlite-framework-jvm", version.ref = "sqlite" }
 androidx-sqlite-jvm = { module = "androidx.sqlite:sqlite-jvm", version.ref = "sqlite" }
 
 # Google

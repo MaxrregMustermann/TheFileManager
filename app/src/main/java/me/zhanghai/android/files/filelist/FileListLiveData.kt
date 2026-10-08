@@ -11,6 +11,7 @@ import java8.nio.file.Path
 import me.zhanghai.android.files.file.FileItem
 import me.zhanghai.android.files.file.loadFileItem
 import me.zhanghai.android.files.provider.common.newDirectoryStream
+import me.zhanghai.android.files.search.SearchIndexer
 import me.zhanghai.android.files.util.CloseableLiveData
 import me.zhanghai.android.files.util.Failure
 import me.zhanghai.android.files.util.Loading
@@ -57,6 +58,10 @@ class FileListLiveData(private val path: Path) : CloseableLiveData<Stateful<List
             } catch (e: Exception) {
                 Failure(valueCompat.value, e)
             }
+            // Indexing the directory that was just listed is nearly free, because the listing
+            // already read everything needed to do it, and it is what makes a later search below
+            // this directory instant.
+            SearchIndexer.indexDirectory(path)
             postValue(value)
         }
     }
