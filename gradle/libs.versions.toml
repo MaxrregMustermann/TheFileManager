@@ -1,0 +1,192 @@
+#
+# Version catalog for the project. Every dependency and plugin version used by the build lives
+# here, so upgrading is a one-line change instead of a hunt through build files.
+#
+# `app/build.gradle` still uses the Groovy DSL, which supports version catalogs through the
+# generated `libs` extension (`libs.androidx.appcompat.appcompat`).
+#
+[versions]
+activity = "1.13.0"
+advrecyclerview = "1.0.0"
+android-gradle-plugin = "9.4.1"
+androidsvg = "1.4"
+appcompat = "1.8.0"
+appiconloader = "1.5.0"
+# MorpheApp fork of REAndroid/ARSCLib, pinned to a commit because the project has no releases.
+# Parses and rewrites binary AndroidManifest.xml and resources.arsc when merging split APKs.
+arsclib = "9b742c412d"
+apksig = "2.3.0"
+bouncycastle = "1.86"
+buildTools = "37.0.0"
+coil = "2.7.0"
+commons-net = "3.13.0"
+core-ktx = "1.19.1"
+coroutines = "1.11.0"
+dav4jvm = "02fe1a95e6b86e323bec3784d7d2fe2d4081dde6"
+dce-rpc = "0.12.13"
+desugar-jdk-libs = "2.1.5"
+drawer = "1.0.3"
+drawerlayout = "1.2.0"
+exifinterface = "1.4.2"
+fastscroll = "1.3.0"
+firebase-bom = "34.19.0"
+firebase-crashlytics-gradle = "3.0.8"
+foregroundcompat = "1.0.2"
+fragment = "1.9.1"
+ftpserver = "1.2.1"
+google-services = "4.5.0"
+guava = "33.7.1-android"
+insetter = "0.3.1"
+jcifs = "2.1.10"
+junit = "4.13.2"
+kotlin = "2.4.20"
+ksp = "2.3.12"
+licensesdialog = "2.1.0"
+lifecycle = "2.11.0"
+# Guava conflicts with com.google.guava:listenablefuture:1.0 pulled in by AndroidX Core.
+listablefuture = "9999.0-empty-to-avoid-conflict-with-guava"
+libarchive = "1.1.7"
+libselinux = "2.1.1"
+libsu = "5.2.2"
+material = "1.14.0"
+materialshadowninepatch = "1.0.0"
+# This is a dependency of org.apache.ftpserver:ftpserver-core but org.apache.mina:mina-core
+# 2.1.4+ became incompatible before API 24 due to dependency on StandardSocketOptions
+# (DIRMINA-1123) and NetworkChannel.supportedOptions() (DIRMINA-1130).
+mina-core = "2.1.3"
+ndk = "30.0.16248370"
+photoview = "2.3.0"
+preference = "1.2.1"
+preferencex = "1.1.0"
+recyclerview = "1.4.0"
+retrofile = "1.2.0"
+room = "2.8.5"
+shizuku = "13.1.5"
+simplemenu-preference = "1.0.3"
+slf4j = "1.7.36"
+# SMBJ 0.12.0 broke anonymous authentication: https://github.com/hierynomus/smbj/issues/792 ,
+# and it's still an issue in 0.14.0 according to
+# https://github.com/hierynomus/smbj/issues/792#issuecomment-2548018378 .
+#noinspection NewerVersionAvailable
+smbj = "0.11.5"
+speed-dial = "3.3.0"
+# androidx.sqlite's bundled SQLite, built with FTS5 (including the trigram tokenizer). The SQLite
+# shipped with the oldest supported Android releases predates FTS5.
+sqlite = "2.7.1"
+sshj = "0.40.0"
+subsampling-scale-image-view = "3.10.0"
+swiperefreshlayout = "1.2.0"
+systemuihelper = "1.0.0"
+
+[libraries]
+# Gradle plugins, also used on the buildscript classpath.
+android-gradle-plugin = { module = "com.android.tools.build:gradle", version.ref = "android-gradle-plugin" }
+firebase-crashlytics-gradle = { module = "com.google.firebase:firebase-crashlytics-gradle", version.ref = "firebase-crashlytics-gradle" }
+google-services = { module = "com.google.gms:google-services", version.ref = "google-services" }
+ksp = { module = "com.google.devtools.ksp:symbol-processing-api", version.ref = "ksp" }
+
+# Kotlin and coroutines
+kotlin-stdlib-jdk8 = { module = "org.jetbrains.kotlin:kotlin-stdlib-jdk8", version.ref = "kotlin" }
+kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
+kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
+
+# AndroidX
+androidx-activity = { module = "androidx.activity:activity-ktx", version.ref = "activity" }
+androidx-appcompat = { module = "androidx.appcompat:appcompat", version.ref = "appcompat" }
+androidx-core = { module = "androidx.core:core-ktx", version.ref = "core-ktx" }
+androidx-drawerlayout = { module = "androidx.drawerlayout:drawerlayout", version.ref = "drawerlayout" }
+androidx-exifinterface = { module = "androidx.exifinterface:exifinterface", version.ref = "exifinterface" }
+androidx-fragment = { module = "androidx.fragment:fragment-ktx", version.ref = "fragment" }
+androidx-lifecycle-common-java8 = { module = "androidx.lifecycle:lifecycle-common-java8", version.ref = "lifecycle" }
+androidx-lifecycle-livedata = { module = "androidx.lifecycle:lifecycle-livedata-ktx", version.ref = "lifecycle" }
+androidx-lifecycle-process = { module = "androidx.lifecycle:lifecycle-process", version.ref = "lifecycle" }
+androidx-lifecycle-runtime = { module = "androidx.lifecycle:lifecycle-runtime-ktx", version.ref = "lifecycle" }
+androidx-lifecycle-viewmodel = { module = "androidx.lifecycle:lifecycle-viewmodel-ktx", version.ref = "lifecycle" }
+androidx-preference = { module = "androidx.preference:preference-ktx", version.ref = "preference" }
+androidx-recyclerview = { module = "androidx.recyclerview:recyclerview", version.ref = "recyclerview" }
+androidx-swiperefreshlayout = { module = "androidx.swiperefreshlayout:swiperefreshlayout", version.ref = "swiperefreshlayout" }
+
+# Room, used to index file names for fast search.
+androidx-room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
+androidx-room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
+androidx-room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
+# BundledSQLiteDriver: a modern SQLite on every supported ABI, so FTS5 and the trigram tokenizer
+# are available even on Android releases whose own SQLite is far too old.
+androidx-sqlite-bundled = { module = "androidx.sqlite:sqlite-bundled", version.ref = "sqlite" }
+# The same bundled SQLite for JVM unit tests, so index queries run against real FTS5 in tests.
+androidx-sqlite-bundled-jvm = { module = "androidx.sqlite:sqlite-bundled-jvm", version.ref = "sqlite" }
+androidx-sqlite-framework-jvm = { module = "androidx.sqlite:sqlite-framework-jvm", version.ref = "sqlite" }
+androidx-sqlite-jvm = { module = "androidx.sqlite:sqlite-jvm", version.ref = "sqlite" }
+
+# Google
+material = { module = "com.google.android.material:material", version.ref = "material" }
+coil-bom = { module = "io.coil-kt:coil-bom", version.ref = "coil" }
+coil = { module = "io.coil-kt:coil" }
+coil-gif = { module = "io.coil-kt:coil-gif" }
+coil-svg = { module = "io.coil-kt:coil-svg" }
+coil-video = { module = "io.coil-kt:coil-video" }
+
+# Firebase, only applied in NONFREE builds.
+firebase-analytics = { module = "com.google.firebase:firebase-analytics" }
+firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "firebase-bom" }
+firebase-crashlytics-ndk = { module = "com.google.firebase:firebase-crashlytics-ndk" }
+
+# Files libraries by Hai Zhang.
+appiconloader = { module = "me.zhanghai.android.appiconloader:appiconloader", version.ref = "appiconloader" }
+fastscroll = { module = "me.zhanghai.android.fastscroll:library", version.ref = "fastscroll" }
+foregroundcompat = { module = "me.zhanghai.android.foregroundcompat:library", version.ref = "foregroundcompat" }
+libarchive = { module = "me.zhanghai.android.libarchive:library", version.ref = "libarchive" }
+libselinux = { module = "me.zhanghai.android.libselinux:library", version.ref = "libselinux" }
+libsu = { module = "com.github.topjohnwu.libsu:service", version.ref = "libsu" }
+retrofile = { module = "me.zhanghai.android.retrofile:library", version.ref = "retrofile" }
+systemuihelper = { module = "me.zhanghai.android.systemuihelper:library", version.ref = "systemuihelper" }
+
+# Split APK merging.
+arsclib = { module = "com.github.MorpheApp:ARSCLib", version.ref = "arsclib" }
+apksig = { module = "com.android.tools.build:apksig", version.ref = "apksig" }
+
+# Network providers.
+commons-net = { module = "commons-net:commons-net", version.ref = "commons-net" }
+dav4jvm = { module = "com.github.bitfireAT:dav4jvm", version.ref = "dav4jvm" }
+dce-rpc = { module = "com.rapid7.client:dcerpc", version.ref = "dce-rpc" }
+desugar-jdk-libs = { module = "com.android.tools:desugar_jdk_libs", version.ref = "desugar-jdk-libs" }
+ftpserver-core = { module = "org.apache.ftpserver:ftpserver-core", version.ref = "ftpserver" }
+jcifs = { module = "eu.agno3.jcifs:jcifs-ng", version.ref = "jcifs" }
+mina-core = { module = "org.apache.mina:mina-core", version.ref = "mina-core" }
+slf4j-android = { module = "org.slf4j:slf4j-android", version.ref = "slf4j" }
+smbj = { module = "com.hierynomus:smbj", version.ref = "smbj" }
+sshj = { module = "com.hierynomus:sshj", version.ref = "sshj" }
+
+# Crypto, for SSH/SMB key handling.
+bouncycastle-bcpkix-jdk15to18 = { module = "org.bouncycastle:bcpkix-jdk15to18", version.ref = "bouncycastle" }
+bouncycastle-bcprov-jdk15to18 = { module = "org.bouncycastle:bcprov-jdk15to18", version.ref = "bouncycastle" }
+guava = { module = "com.google.guava:guava", version.ref = "guava" }
+listablefuture = { module = "com.google.guava:listenablefuture", version.ref = "listablefuture" }
+
+# UI widgets.
+advrecyclerview = { module = "com.h6ah4i.android.widget.advrecyclerview:advrecyclerview", version.ref = "advrecyclerview" }
+androidsvg = { module = "com.caverock:androidsvg-aar", version.ref = "androidsvg" }
+drawer = { module = "com.drakeet.drawer:drawer", version.ref = "drawer" }
+insetter = { module = "dev.chrisbanes:insetter-ktx", version.ref = "insetter" }
+licensesdialog = { module = "de.psdev.licensesdialog:licensesdialog", version.ref = "licensesdialog" }
+materialshadowninepatch = { module = "com.h6ah4i.android.materialshadowninepatch:materialshadowninepatch", version.ref = "materialshadowninepatch" }
+photoview = { module = "com.github.chrisbanes:PhotoView", version.ref = "photoview" }
+preferencex = { module = "com.takisoft.preferencex:preferencex", version.ref = "preferencex" }
+simplemenu-preference = { module = "dev.rikka.rikkax.preference:simplemenu-preference", version.ref = "simplemenu-preference" }
+speed-dial = { module = "com.leinardi.android:speed-dial", version.ref = "speed-dial" }
+subsampling-scale-image-view = { module = "com.davemorrissey.labs:subsampling-scale-image-view-androidx", version.ref = "subsampling-scale-image-view" }
+
+# Shizuku, for root file access without a bundled su binary.
+shizuku-api = { module = "dev.rikka.shizuku:api", version.ref = "shizuku" }
+shizuku-provider = { module = "dev.rikka.shizuku:provider", version.ref = "shizuku" }
+
+# Test
+junit = { module = "junit:junit", version.ref = "junit" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "android-gradle-plugin" }
+firebase-crashlytics = { id = "com.google.firebase.crashlytics", version.ref = "firebase-crashlytics-gradle" }
+google-services = { id = "com.google.gms.google-services", version.ref = "google-services" }
+kotlin-parcelize = { id = "org.jetbrains.kotlin.plugin.parcelize", version.ref = "kotlin" }
+ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }

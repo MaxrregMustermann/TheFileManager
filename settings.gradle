@@ -1,1 +1,29 @@
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+dependencyResolutionManagement {
+    repositoriesMode = RepositoriesMode.FAIL_ON_PROJECT_REPOS
+    repositories {
+        google()
+        mavenCentral()
+        // JitPack hosts dav4jvm, PhotoView, Libsu and ARSCLib.
+        maven {
+            url 'https://jitpack.io'
+            content {
+                includeGroup 'com.github.bitfireAT'
+                includeGroup 'com.github.chrisbanes'
+                includeGroup 'com.github.MorpheApp'
+                includeGroup 'com.github.topjohnwu.libsu'
+            }
+        }
+    }
+}
+
+rootProject.name = 'MaterialFiles'
+
 include ':app'
