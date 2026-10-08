@@ -48,6 +48,7 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+import com.google.android.material.tabs.TabLayout
 import com.leinardi.android.speeddial.SpeedDialView
 import java8.nio.file.Path
 import java8.nio.file.Paths
@@ -248,6 +249,7 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
         binding.recyclerView.setOnApplyWindowInsetsListener(
             ScrollingViewOnApplyWindowInsetsListener(binding.recyclerView, fastScroller)
         )
+        setUpTabs()
         binding.speedDialView.inflate(R.menu.file_list_speed_dial)
         binding.speedDialView.setOnActionSelectedListener {
             when (it.id) {
@@ -347,6 +349,7 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
         viewModel.breadcrumbLiveData.observe(viewLifecycleOwner) {
             binding.breadcrumbLayout.setData(it)
         }
+        viewModel.fileListModeLiveData.observe(viewLifecycleOwner) { onFileListModeChanged(it) }
         viewModel.viewTypeLiveData.observe(viewLifecycleOwner) { onViewTypeChanged(it) }
         // Live data only calls observeForever() on its sources when it is active, so we have to
         // make view type live data active first (so that it can load its initial value) before we
@@ -582,8 +585,54 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
         updateBottomToolbar()
     }
 
+    private fun setUpTabs() {
+        binding.tabLayout.apply {
+            addTab(newTab().setText(R.string.file_list_tab_directory), false)
+            addTab(newTab().setText(R.string.file_list_tab_recent), false)
+            addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
+                override fun onTabSelected(tab: TabLayout.Tab) {
+                    viewModel.setFileListMode(
+                        if (tab.position == RECENT_TAB_POSITION) FileListMode.RECENT
+                        else FileListMode.DIRECTORY
+                    )
+                }
+
+                override fun onTabUnselected(tab: TabLayout.Tab) {}
+
+                override fun onTabReselected(tab: TabLayout.Tab) {}
+            })
+        }
+        updateTabLayoutVisibility()
+    }
+
+    private fun onFileListModeChanged(fileListMode: FileListMode) {
+        val position =
+            if (fileListMode == FileListMode.RECENT) RECENT_TAB_POSITION else DIRECTORY_TAB_POSITION
+        val tab = binding.tabLayout.getTabAt(position)
+        if (tab != null && !tab.isSelected) {
+            tab.select()
+        }
+        updateTabLayoutVisibility()
+        updateViewSortMenuItems()
+    }
+
+    /**
+     * The tabs are hidden while picking a file, where the caller wants exactly one list, and while
+     * searching, because search is always relative to the current directory.
+     */
+    private fun updateTabLayoutVisibility() {
+        val isVisible = viewModel.pickOptions == null && !viewModel.searchState.isSearching &&
+            !viewModel.isSearchViewExpanded
+        binding.tabLayout.fadeToVisibilityUnsafe(isVisible)
+        // Recent files are from everywhere, so the path they would be relative to is meaningless.
+        binding.breadcrumbLayout.fadeToVisibilityUnsafe(
+            viewModel.fileListMode != FileListMode.RECENT
+        )
+    }
+
     private fun onSearchViewExpandedChanged(expanded: Boolean) {
         updateViewSortMenuItems()
+        updateTabLayoutVisibility()
     }
 
     private fun onFileListChanged(stateful: Stateful<List<FileItem>>) {
@@ -609,6 +658,12 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
             }
         }
         binding.emptyView.fadeToVisibilityUnsafe(stateful is Success && !hasFiles)
+        if (stateful is Success && !hasFiles) {
+            binding.emptyView.setText(
+                if (viewModel.fileListMode == FileListMode.RECENT) R.string.file_list_recent_empty
+                else R.string.file_list_empty
+            )
+        }
         if (files != null) {
             updateAdapterFileList()
         } else {
@@ -794,6 +849,7 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
             }
         }
         requireActivity().title = title
+        updateTabLayoutVisibility()
         updateSelectAllMenuItem()
         updateOverlayToolbar()
         updateBottomToolbar()
@@ -1624,6 +1680,9 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
         private const val ACTION_VIEW_DOWNLOADS =
             "me.zhanghai.android.files.intent.action.VIEW_DOWNLOADS"
 
+        private const val DIRECTORY_TAB_POSITION = 0
+        private const val RECENT_TAB_POSITION = 1
+
         private const val IMAGE_VIEWER_ACTIVITY_PATH_LIST_SIZE_MAX = 1000
     }
 
@@ -1662,10 +1721,11 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
         val toolbar: Toolbar,
         val overlayToolbar: Toolbar,
         val breadcrumbLayout: BreadcrumbLayout,
+        val tabLayout: TabLayout,
         val contentLayout: ViewGroup,
         val progress: ProgressBar,
         val errorText: TextView,
-        val emptyView: View,
+        val emptyView: TextView,
         val swipeRefreshLayout: SwipeRefreshLayout,
         val recyclerView: RecyclerView,
         val bottomBarLayout: ViewGroup,
@@ -1690,7 +1750,8 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
                     bindingRoot, includeBinding.drawerLayout, includeBinding.persistentDrawerLayout,
                     includeBinding.persistentBarLayout, appBarBinding.appBarLayout,
                     appBarBinding.toolbar, appBarBinding.overlayToolbar,
-                    appBarBinding.breadcrumbLayout, contentBinding.contentLayout,
+                    appBarBinding.breadcrumbLayout, appBarBinding.tabLayout,
+                    contentBinding.contentLayout,
                     contentBinding.progress, contentBinding.errorText, contentBinding.emptyView,
                     contentBinding.swipeRefreshLayout, contentBinding.recyclerView,
                     bottomBarBinding.bottomBarLayout, bottomBarBinding.bottomToolbar,

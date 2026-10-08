@@ -61,8 +61,20 @@ class FileListViewModel : ViewModel() {
         _searchStateLiveData.value = SearchState(false, "")
     }
 
+    private val _fileListModeLiveData = MutableLiveData(FileListMode.DIRECTORY)
+    val fileListModeLiveData: LiveData<FileListMode> = _fileListModeLiveData
+    val fileListMode: FileListMode
+        get() = _fileListModeLiveData.valueCompat
+
+    fun setFileListMode(fileListMode: FileListMode) {
+        if (_fileListModeLiveData.valueCompat == fileListMode) {
+            return
+        }
+        _fileListModeLiveData.value = fileListMode
+    }
+
     private val _fileListLiveData =
-        FileListSwitchMapLiveData(currentPathLiveData, _searchStateLiveData)
+        FileListSwitchMapLiveData(currentPathLiveData, _searchStateLiveData, _fileListModeLiveData)
     val fileListLiveData: LiveData<Stateful<List<FileItem>>>
         get() = _fileListLiveData
     val fileListStateful: Stateful<List<FileItem>>
@@ -243,13 +255,15 @@ class FileListViewModel : ViewModel() {
 
     private class FileListSwitchMapLiveData(
         private val pathLiveData: LiveData<Path>,
-        private val searchStateLiveData: LiveData<SearchState>
+        private val searchStateLiveData: LiveData<SearchState>,
+        private val fileListModeLiveData: LiveData<FileListMode>
     ) : MediatorLiveData<Stateful<List<FileItem>>>(), Closeable {
         private var liveData: CloseableLiveData<Stateful<List<FileItem>>>? = null
 
         init {
             addSource(pathLiveData) { updateSource() }
             addSource(searchStateLiveData) { updateSource() }
+            addSource(fileListModeLiveData) { updateSource() }
         }
 
         private fun updateSource() {
@@ -259,10 +273,15 @@ class FileListViewModel : ViewModel() {
             }
             val path = pathLiveData.valueCompat
             val searchState = searchStateLiveData.valueCompat
-            val liveData = if (searchState.isSearching) {
-                SearchFileListLiveData(path, searchState.query)
-            } else {
-                FileListLiveData(path)
+            // Recent files are not a location, so searching always happens below the current
+            // directory no matter which tab is showing.
+            val fileListMode =
+                if (searchState.isSearching) FileListMode.DIRECTORY
+                else fileListModeLiveData.valueCompat
+            val liveData = when {
+                searchState.isSearching -> SearchFileListLiveData(path, searchState.query)
+                fileListMode == FileListMode.RECENT -> RecentFileListLiveData()
+                else -> FileListLiveData(path)
             }
             this.liveData = liveData
             addSource(liveData) { value = it }
@@ -272,6 +291,7 @@ class FileListViewModel : ViewModel() {
             when (val liveData = liveData) {
                 is FileListLiveData -> liveData.loadValue()
                 is SearchFileListLiveData -> liveData.loadValue()
+                is RecentFileListLiveData -> liveData.loadValue()
             }
         }
 
