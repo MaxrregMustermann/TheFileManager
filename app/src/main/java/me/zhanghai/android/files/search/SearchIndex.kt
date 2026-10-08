@@ -23,11 +23,7 @@ object SearchIndex {
     @Volatile
     private var fileIndexDao: FileIndexDao? = null
 
-    /**
-     * The paths whose whole subtree is in the index. A search below one of these can be answered
-     * from the index alone, which is the whole point of having an index.
-     */
-    private val coveredRoots = mutableSetOf<String>()
+    private val coverage = IndexCoverage()
 
     /**
      * Opens the database. Until this has been called the index is unavailable and callers should
@@ -40,7 +36,7 @@ object SearchIndex {
         synchronized(this) {
             if (fileIndexDao == null) {
                 fileIndexDao = SearchIndexDatabase.create(context).fileIndexDao()
-                coveredRoots.clear()
+                coverage.clear()
             }
         }
     }
@@ -111,10 +107,8 @@ object SearchIndex {
     /** Forgets everything at or below [uri]. */
     fun deleteSubtreeUri(uri: String) {
         val fileIndexDao = fileIndexDao ?: return
-        synchronized(this) {
-            // Anything below a path that just lost its index entry is no longer covered.
-            coveredRoots.removeIf { it == uri || it.startsWith("$uri/") }
-        }
+        // Anything below a path that just lost its index entries is no longer covered.
+        coverage.remove(uri)
         try {
             fileIndexDao.deleteSubtree(SearchIndexSchema.subtreePattern(uri, includeSelf = true))
         } catch (e: Exception) {
@@ -124,9 +118,7 @@ object SearchIndex {
 
     fun clear() {
         val fileIndexDao = fileIndexDao ?: return
-        synchronized(this) {
-            coveredRoots.clear()
-        }
+        coverage.clear()
         try {
             fileIndexDao.clear()
         } catch (e: Exception) {
@@ -146,19 +138,11 @@ object SearchIndex {
      * have to walk the file system.
      */
     fun markCovered(root: Path) {
-        synchronized(this) {
-            coveredRoots.add(root.toIndexUri())
-        }
+        coverage.add(root.toIndexUri())
     }
 
-    fun isCovered(root: Path): Boolean {
-        if (fileIndexDao == null) {
-            return false
-        }
-        synchronized(this) {
-            return coveredRoots.any { root.toIndexUri().startsWith("$it/") }
-        }
-    }
+    fun isCovered(root: Path): Boolean =
+        isInitialized && coverage.contains(root.toIndexUri())
 }
 
 /** The URI a path is stored under, and the only stable identity a provider gives us. */
