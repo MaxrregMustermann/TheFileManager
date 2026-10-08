@@ -30,7 +30,6 @@ import androidx.annotation.PluralsRes
 import androidx.fragment.app.Fragment
 import me.zhanghai.android.files.R
 import me.zhanghai.android.files.compat.checkSelfPermissionCompat
-import me.zhanghai.android.files.compat.getColorCompat
 import me.zhanghai.android.files.compat.getColorStateListCompat
 import me.zhanghai.android.files.compat.getDrawableCompat
 
@@ -50,15 +49,11 @@ fun Fragment.getAnimation(@AnimRes id: Int): Animation = requireContext().getAni
 fun Fragment.getBoolean(@BoolRes id: Int): Boolean = requireContext().getBoolean(id)
 
 @ColorInt
-fun Fragment.getColor(@ColorRes id: Int): Int = requireContext().getColorCompat(id)
 
 fun Fragment.getColorStateList(@ColorRes id: Int): ColorStateList =
     requireContext().getColorStateListCompat(id)
 
 @Dimension
-fun Fragment.getDimension(@DimenRes id: Int): Float = requireContext().getDimension(id)
-
-@Dimension(unit = Dimension.DP)
 fun Fragment.getDimensionDp(@DimenRes id: Int): Float = requireContext().getDimensionDp(id)
 
 @Dimension
@@ -70,8 +65,6 @@ fun Fragment.getDimensionPixelSize(@DimenRes id: Int): Int =
     requireContext().getDimensionPixelSize(id)
 
 fun Fragment.getDrawable(@DrawableRes id: Int): Drawable = requireContext().getDrawableCompat(id)
-
-fun Fragment.getFloat(@DimenRes id: Int): Float = requireContext().getFloat(id)
 
 fun Fragment.getInteger(@IntegerRes id: Int): Int = requireContext().getInteger(id)
 

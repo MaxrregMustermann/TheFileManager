@@ -24,16 +24,11 @@ import java8.nio.file.attribute.FileTime
 import java8.nio.file.attribute.GroupPrincipal
 import java8.nio.file.attribute.UserPrincipal
 import java8.nio.file.spi.FileSystemProvider
-import java.io.BufferedReader
-import java.io.BufferedWriter
 import java.io.IOException
 import java.io.InputStream
-import java.io.InputStreamReader
 import java.io.InterruptedIOException
 import java.io.OutputStream
-import java.io.OutputStreamWriter
 import java.nio.channels.ClosedByInterruptException
-import java.nio.charset.Charset
 import kotlin.contracts.ExperimentalContracts
 import kotlin.contracts.contract
 import java8.nio.file.attribute.PosixFileAttributeView as Java8PosixFileAttributeView
@@ -120,14 +115,6 @@ fun Path.moveTo(target: Path, vararg options: CopyOption) {
         ForeignCopyMove.move(this, target, *options)
     }
 }
-
-@Throws(IOException::class)
-fun Path.newBufferedReader(charset: Charset, vararg options: OpenOption): BufferedReader =
-    BufferedReader(InputStreamReader(newInputStream(*options), charset.newDecoder()))
-
-@Throws(IOException::class)
-fun Path.newBufferedWriter(charset: Charset, vararg options: OpenOption): BufferedWriter =
-    BufferedWriter(OutputStreamWriter(newOutputStream(*options), charset.newEncoder()))
 
 @Throws(IOException::class)
 fun Path.newByteChannel(

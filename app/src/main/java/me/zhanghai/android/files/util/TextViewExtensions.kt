@@ -79,18 +79,3 @@ fun TextView.setOnEditorConfirmActionListener(listener: (TextView) -> Unit) {
         }
     }
 }
-
-fun TextView.setSpanClickable() {
-    val wasClickable = isClickable
-    val wasLongClickable = isLongClickable
-    movementMethod = ClickableMovementMethod
-    // Reset for TextView.fixFocusableAndClickableSettings(). We don't want View.onTouchEvent()
-    // to consume touch events.
-    isClickable = wasClickable
-    isLongClickable = wasLongClickable
-}
-
-fun TextView.setSpanClickableAndTextSelectable() {
-    setTextIsSelectable(true)
-    movementMethod = ClickableArrowKeyMovementMethod
-}

@@ -106,6 +106,3 @@ internal class SftpPath : ByteStringListPath<SftpPath>, Client.Path {
         }
     }
 }
-
-val Path.isSftpPath: Boolean
-    get() = this is SftpPath

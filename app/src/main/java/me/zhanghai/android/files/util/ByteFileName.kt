@@ -8,39 +8,7 @@ package me.zhanghai.android.files.util
 import me.zhanghai.android.files.provider.common.ByteString
 import me.zhanghai.android.files.provider.common.ByteStringBuilder
 import me.zhanghai.android.files.provider.common.dropLast
-import me.zhanghai.android.files.provider.common.dropLastWhile
 import me.zhanghai.android.files.provider.common.substringAfterLast
-import me.zhanghai.android.files.provider.common.takeIfNotEmpty
-
-@JvmInline
-value class BytePathName(val value: ByteString) {
-    val fileName: ByteString?
-        get() = value.substringAfterLast(SEPARATOR).takeIfNotEmpty()
-
-    val directoryName: ByteString?
-        get() = value.substringBeforeLastOrNull(SEPARATOR)?.dropLastWhile { it == SEPARATOR }
-
-    private fun ByteString.substringBeforeLastOrNull(delimiter: Byte): ByteString? {
-        val index = lastIndexOf(delimiter)
-        return if (index != -1) substring(0, index) else null
-    }
-
-    companion object {
-        // Not using File.separatorChar so that behavior is consistent and always ready for URIs.
-        // Anyway we are on Android. If one day we were moved to Windows, fail-fast is also good.
-        const val SEPARATOR = '/'.code.toByte()
-    }
-}
-
-fun ByteString.asPathName(): BytePathName {
-    require(isValidPathName)
-    return BytePathName(this)
-}
-
-fun ByteString.asPathNameOrNull(): BytePathName? = if (isValidPathName) BytePathName(this) else null
-
-private val ByteString.isValidPathName: Boolean
-    get() = isNotEmpty() && !contains('\u0000'.code.toByte())
 
 @JvmInline
 value class ByteFileName(val value: ByteString) {
@@ -76,6 +44,10 @@ value class ByteFileName(val value: ByteString) {
 
         // https://github.com/GNOME/nautilus/blob/c73ad94a72f8e9a989b01858018de74182d17f0e/eel/eel-vfs-extensions.c#L124
         private val DOUBLE_EXTENSIONS = listOf("bz", "bz2", "gz", "sit", "xz", "Z")
+
+        // Not using File.separatorChar so that behavior is consistent and always ready for URIs.
+        // Anyway we are on Android. If one day we were moved to Windows, fail-fast is also good.
+        const val SEPARATOR = '/'.code.toByte()
     }
 }
 
@@ -87,4 +59,4 @@ fun ByteString.asFileName(): ByteFileName {
 fun ByteString.asFileNameOrNull(): ByteFileName? = if (isValidFileName) ByteFileName(this) else null
 
 private val ByteString.isValidFileName: Boolean
-    get() = isNotEmpty() && !contains('\u0000'.code.toByte()) && !contains(BytePathName.SEPARATOR)
+    get() = isNotEmpty() && !contains('\u0000'.code.toByte()) && !contains(ByteFileName.SEPARATOR)

@@ -120,6 +120,3 @@ internal class WebDavPath : ByteStringListPath<WebDavPath>, Client.Path {
         }
     }
 }
-
-val Path.isWebDavPath: Boolean
-    get() = this is WebDavPath

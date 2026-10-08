@@ -139,6 +139,3 @@ internal class SmbPath : ByteStringListPath<SmbPath>, Client.Path {
         }
     }
 }
-
-val Path.isSmbPath: Boolean
-    get() = this is SmbPath

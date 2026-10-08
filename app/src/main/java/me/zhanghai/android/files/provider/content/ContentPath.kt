@@ -11,7 +11,6 @@ import android.os.Parcelable
 import androidx.core.net.toUri
 import java8.nio.file.FileSystem
 import java8.nio.file.LinkOption
-import java8.nio.file.Path
 import java8.nio.file.WatchEvent
 import java8.nio.file.WatchKey
 import java8.nio.file.WatchService
@@ -170,6 +169,3 @@ internal class ContentPath : ByteStringListPath<ContentPath> {
         }
     }
 }
-
-val Path.isContentPath: Boolean
-    get() = this is ContentPath

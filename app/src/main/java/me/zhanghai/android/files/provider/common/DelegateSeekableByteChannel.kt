@@ -9,13 +9,6 @@ import java8.nio.channels.SeekableByteChannel
 import java.io.IOException
 import java.nio.ByteBuffer
 
-fun DelegateSeekableByteChannel(channel: SeekableByteChannel): SeekableByteChannel =
-    if (channel is ForceableChannel) {
-        DelegateForceableSeekableByteChannel(channel)
-    } else {
-        DelegateNonForceableSeekableByteChannel(channel)
-    }
-
 open class DelegateNonForceableSeekableByteChannel(
     channel: SeekableByteChannel
 ) : BaseDelegateSeekableByteChannel(channel) {

@@ -8,9 +8,7 @@ package me.zhanghai.android.files.settings
 import android.content.SharedPreferences
 import android.os.Parcel
 import androidx.annotation.AnyRes
-import androidx.annotation.ArrayRes
 import androidx.annotation.BoolRes
-import androidx.annotation.DimenRes
 import androidx.annotation.IntegerRes
 import androidx.annotation.StringRes
 import androidx.core.content.edit
@@ -20,9 +18,7 @@ import me.zhanghai.android.files.app.application
 import me.zhanghai.android.files.util.Base64
 import me.zhanghai.android.files.util.asBase64
 import me.zhanghai.android.files.util.getBoolean
-import me.zhanghai.android.files.util.getFloat
 import me.zhanghai.android.files.util.getInteger
-import me.zhanghai.android.files.util.getStringArray
 import me.zhanghai.android.files.util.toBase64
 import me.zhanghai.android.files.util.toByteArray
 import me.zhanghai.android.files.util.use
@@ -55,34 +51,6 @@ class StringSettingLiveData(
     }
 }
 
-class StringSetSettingLiveData(
-    nameSuffix: String?,
-    @StringRes keyRes: Int,
-    keySuffix: String?,
-    @ArrayRes defaultValueRes: Int
-) : SettingLiveData<Set<String>>(nameSuffix, keyRes, keySuffix, defaultValueRes) {
-    constructor(@StringRes keyRes: Int, @ArrayRes defaultValueRes: Int) : this(
-        null, keyRes, null, defaultValueRes
-    )
-
-    init {
-        init()
-    }
-
-    override fun getDefaultValue(@StringRes defaultValueRes: Int): Set<String> =
-        application.getStringArray(defaultValueRes).toSet()
-
-    override fun getValue(
-        sharedPreferences: SharedPreferences,
-        key: String,
-        defaultValue: Set<String>
-    ): Set<String> = sharedPreferences.getStringSet(key, defaultValue)!!
-
-    override fun putValue(sharedPreferences: SharedPreferences, key: String, value: Set<String>) {
-        sharedPreferences.edit { putStringSet(key, value) }
-    }
-}
-
 class IntegerSettingLiveData(
     nameSuffix: String?,
     @StringRes keyRes: Int,
@@ -108,63 +76,6 @@ class IntegerSettingLiveData(
 
     override fun putValue(sharedPreferences: SharedPreferences, key: String, value: Int) {
         sharedPreferences.edit { putInt(key, value) }
-    }
-}
-
-class LongSettingLiveData(
-    nameSuffix: String?,
-    @StringRes keyRes: Int,
-    keySuffix: String?,
-    @StringRes defaultValueRes: Int
-) : SettingLiveData<Long>(nameSuffix, keyRes, keySuffix, defaultValueRes) {
-    constructor(@StringRes keyRes: Int, @StringRes defaultValueRes: Int) : this(
-        null, keyRes, null, defaultValueRes
-    )
-
-    init {
-        init()
-    }
-
-    override fun getDefaultValue(@StringRes defaultValueRes: Int): Long =
-        application.getString(defaultValueRes).toLong()
-
-    override fun getValue(
-        sharedPreferences: SharedPreferences,
-        key: String,
-        defaultValue: Long
-    ): Long =
-        sharedPreferences.getLong(key, defaultValue)
-
-    override fun putValue(sharedPreferences: SharedPreferences, key: String, value: Long) {
-        sharedPreferences.edit { putLong(key, value) }
-    }
-}
-
-class FloatSettingLiveData(
-    nameSuffix: String?,
-    @StringRes keyRes: Int,
-    keySuffix: String?,
-    @DimenRes defaultValueRes: Int
-) : SettingLiveData<Float>(nameSuffix, keyRes, keySuffix, defaultValueRes) {
-    constructor(@StringRes keyRes: Int, @DimenRes defaultValueRes: Int) : this(
-        null, keyRes, null, defaultValueRes
-    )
-
-    init {
-        init()
-    }
-
-    override fun getDefaultValue(@DimenRes defaultValueRes: Int): Float =
-        application.getFloat(defaultValueRes)
-
-    override fun getValue(
-        sharedPreferences: SharedPreferences,
-        key: String,
-        defaultValue: Float
-    ): Float = sharedPreferences.getFloat(key, defaultValue)
-
-    override fun putValue(sharedPreferences: SharedPreferences, key: String, value: Float) {
-        sharedPreferences.edit { putFloat(key, value) }
     }
 }
 

@@ -9,7 +9,6 @@ import android.os.AsyncTask
 import java.io.IOException
 import java.io.InterruptedIOException
 import java.util.concurrent.ExecutorService
-import java.util.concurrent.Future
 import java8.nio.file.DirectoryIteratorException
 import java8.nio.file.Files
 import java8.nio.file.LinkOption

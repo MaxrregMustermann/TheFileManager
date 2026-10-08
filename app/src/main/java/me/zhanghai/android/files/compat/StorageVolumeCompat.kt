@@ -47,10 +47,6 @@ val StorageVolume.isPrimaryCompat: Boolean
     @SuppressLint("NewApi")
     get() = isPrimary
 
-val StorageVolume.isRemovableCompat: Boolean
-    @SuppressLint("NewApi")
-    get() = isRemovable
-
 val StorageVolume.isEmulatedCompat: Boolean
     @SuppressLint("NewApi")
     get() = isEmulated

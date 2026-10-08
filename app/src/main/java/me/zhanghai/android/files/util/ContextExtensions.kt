@@ -40,7 +40,6 @@ import androidx.core.content.res.ResourcesCompat
 import androidx.core.util.TypedValueCompat
 import me.zhanghai.android.files.R
 import me.zhanghai.android.files.compat.complexUnitCompat
-import me.zhanghai.android.files.compat.getFloatCompat
 import me.zhanghai.android.files.compat.mainExecutorCompat
 import me.zhanghai.android.files.compat.obtainStyledAttributesCompat
 import me.zhanghai.android.files.compat.use
@@ -62,9 +61,6 @@ fun Context.getAnimation(@AnimRes id: Int): Animation = AnimationUtils.loadAnima
 fun Context.getBoolean(@BoolRes id: Int): Boolean = resources.getBoolean(id)
 
 @Dimension
-fun Context.getDimension(@DimenRes id: Int): Float = resources.getDimension(id)
-
-@Dimension(unit = Dimension.DP)
 fun Context.getDimensionDp(@DimenRes id: Int): Float {
     TypedValue::class.useTemp { value ->
         resources.getValue(id, value, true)
@@ -87,8 +83,6 @@ fun Context.getDimensionPixelOffset(@DimenRes id: Int): Int = resources.getDimen
 
 @Dimension
 fun Context.getDimensionPixelSize(@DimenRes id: Int): Int = resources.getDimensionPixelSize(id)
-
-fun Context.getFloat(@DimenRes id: Int): Float = resources.getFloatCompat(id)
 
 fun Context.getInteger(@IntegerRes id: Int): Int = resources.getInteger(id)
 
@@ -152,10 +146,6 @@ fun Context.getResourceIdByAttr(@AttrRes attr: Int): Int =
 val Context.displayWidth: Int
     get() = resources.displayMetrics.widthPixels
 
-val Context.displayHeight: Int
-    get() = resources.displayMetrics.heightPixels
-
-@Dimension
 fun Context.dpToDimension(@Dimension(unit = Dimension.DP) dp: Float): Float =
     TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, dp, resources.displayMetrics)
 
@@ -217,9 +207,6 @@ val Context.isMaterial3Theme: Boolean
 
 val Context.isOrientationLandscape: Boolean
     get() = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-
-val Context.isOrientationPortrait: Boolean
-    get() = resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
 
 val Context.layoutInflater: LayoutInflater
     get() = LayoutInflater.from(this)

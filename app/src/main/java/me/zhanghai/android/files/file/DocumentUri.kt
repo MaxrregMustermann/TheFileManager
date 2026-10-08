@@ -24,9 +24,6 @@ value class DocumentUri(val value: @WriteWith<StableUriParceler> Uri) : Parcelab
         get() = DocumentsContract.getDocumentId(value)
 }
 
-fun Uri.asDocumentUriOrNull(): DocumentUri? =
-    if (isDocumentUri) DocumentUri(this) else null
-
 fun Uri.asDocumentUri(): DocumentUri {
     require(isDocumentUri)
     return DocumentUri(this)

@@ -37,11 +37,3 @@ object ParcelableListParceler : Parceler<List<Any?>> {
         parcel.writeParcelableListCompat(this as List<Parcelable?>, flags)
     }
 }
-
-object ValueParceler : Parceler<Any?> {
-    override fun create(parcel: Parcel): Any? = parcel.readValue(appClassLoader)
-
-    override fun Any?.write(parcel: Parcel, flags: Int) {
-        parcel.writeValue(this)
-    }
-}

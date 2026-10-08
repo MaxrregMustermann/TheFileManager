@@ -29,8 +29,3 @@ inline fun <reified VM : ViewModel> Fragment.viewModels(
         }
     }
 )
-
-inline fun <reified VM : ViewModel> Fragment.activityViewModels(
-    noinline extrasProducer: (() -> CreationExtras)? = null,
-    noinline factoryProducer: (() -> () -> VM)? = null
-) = viewModels(::requireActivity, extrasProducer, factoryProducer)

@@ -218,7 +218,6 @@
     <string name="file_job_restore_selinux_context_error_message_format">Villa kom upp við að endurheimta SELinux-samhengi fyrir “%1$s”.\n%2$s</string>
     <string name="file_job_write_error_title">Villa kom upp við að skrifa</string>
     <string name="file_job_write_error_message_format">Villa kom upp við að skrifa “%1$s”.\n%2$s</string>
-    <string name="file_job_get_information_error_message_format">Villa kom upp við að nálgast upplýsingar um “%1$s”.</string>
     <string name="file_job_remount_format">Endurtengja “%1$s” sem les-skrifanlegt</string>
     <string name="file_job_remount_loading_format">Endurtengi “%1$s” sem les-skrifanlegt</string>
     <string name="file_job_remount_success_format">“%1$s” hefur verið endurtengt sem les-skrifanlegt</string>
@@ -339,7 +338,6 @@
     <string name="file_properties_basic_parent_directory">Yfirmappa</string>
     <string name="file_properties_basic_archive_file">Setja skrá í geymslu</string>
     <string name="file_properties_basic_archive_entry">Setja færslu í geymslu</string>
-    <string name="file_properties_basic_free_space">Laust pláss</string>
     <string name="file_properties_permission">Heimildir</string>
     <string name="file_properties_permission_owner">Eigandi</string>
     <string name="file_properties_permission_group">Hópur</string>
