@@ -48,8 +48,6 @@ fun Fragment.getAnimation(@AnimRes id: Int): Animation = requireContext().getAni
 
 fun Fragment.getBoolean(@BoolRes id: Int): Boolean = requireContext().getBoolean(id)
 
-@ColorInt
-
 fun Fragment.getColorStateList(@ColorRes id: Int): ColorStateList =
     requireContext().getColorStateListCompat(id)
 
