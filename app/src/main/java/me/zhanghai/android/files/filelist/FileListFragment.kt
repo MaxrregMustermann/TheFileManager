@@ -950,6 +950,10 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
             menu.findItem(R.id.action_extract).isVisible = areAllFilesArchiveFiles
             val isCurrentPathReadOnly = viewModel.currentPath.fileSystem.isReadOnly
             menu.findItem(R.id.action_archive).isVisible = !isCurrentPathReadOnly
+            // Split APKs only merge into something installable once every one of them is selected,
+            // which the user may have to do by hand.
+            menu.findItem(R.id.action_merge_splits).isVisible = !isCurrentPathReadOnly &&
+                files.isNotEmpty() && files.all { it.mimeType == MimeType.APK }
         }
         if (!overlayActionMode.isActive) {
             binding.appBarLayout.setExpanded(true)
@@ -999,6 +1003,10 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
                 showCreateArchiveDialog(viewModel.selectedFiles)
                 true
             }
+            R.id.action_merge_splits -> {
+                mergeSplitApks(viewModel.selectedFiles.map { it.path })
+                true
+            }
             R.id.action_share -> {
                 shareFiles(viewModel.selectedFiles)
                 true
@@ -1046,6 +1054,10 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
     override fun deleteFiles(files: FileItemSet) {
         FileJobService.delete(makePathListForJob(files), requireContext())
         viewModel.selectFiles(files, false)
+    }
+
+    private fun mergeSplitApks(splits: List<Path>) {
+        FileJobService.mergeSplitApks(splits, requireContext())
     }
 
     private fun extractFiles(files: FileItemSet) {

@@ -35,6 +35,8 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 import kotlinx.coroutines.runBlocking
 import me.zhanghai.android.files.R
+import me.zhanghai.android.files.apk.ApkMerger
+import me.zhanghai.android.files.apk.ApkSigner
 import me.zhanghai.android.files.app.BackgroundActivityStarter
 import me.zhanghai.android.files.app.mainExecutor
 import me.zhanghai.android.files.compat.mainExecutorCompat
@@ -1467,6 +1469,54 @@ class InstallApkJob(private val file: Path) : FileJob() {
             }
             uri.createInstallPackageIntent()
         }
+    }
+}
+
+/**
+ * Merges split APKs back into one installable APK.
+ *
+ * The splits can come from several directories, or from inside a bundle, so they are staged into
+ * one working directory first, and the merged APK is written next to them.
+ */
+class MergeSplitApksJob(private val splits: List<Path>) : FileJob() {
+    override fun run() {
+        val targetDirectory =
+            splits.first().parent ?: throw IOException("Cannot find the target directory")
+        // The splits can come from anywhere, and ARSCLib reads a whole directory at a time, so they
+        // are staged into one working directory before being merged.
+        val workingDirectory = Files.createTempDirectory(targetDirectory, "merge-split-apks-")
+        try {
+            val stagedSplits = splits.mapIndexed { index, split ->
+                val name = split.fileName?.toString() ?: "split-$index.apk"
+                val staged = workingDirectory.resolve(name)
+                postProgress(name)
+                Files.copy(split, staged, StandardCopyOption.REPLACE_EXISTING)
+                staged.toFile()
+            }
+            val name = splits.first().fileName.toString().removeSuffix(".apk")
+            val unsigned = workingDirectory.resolve("$name-unsigned.apk")
+            ApkMerger.merge(stagedSplits, unsigned.toFile()) { postProgress(it) }
+            val merged = workingDirectory.resolve("$name-merged.apk")
+            ApkSigner.sign(unsigned.toFile(), merged.toFile(), MINIMUM_SDK_VERSION)
+            val mergedFileName = merged.fileName
+            Files.copy(
+                merged, targetDirectory.resolve(mergedFileName), StandardCopyOption.REPLACE_EXISTING
+            )
+            service.showToast("${targetDirectory.fileName}/$mergedFileName")
+        } finally {
+            workingDirectory.toFile().deleteRecursively()
+        }
+    }
+
+    private fun postProgress(text: String) {
+        postNotification(
+            getString(R.string.file_job_merge_splits_notification_title), text, null, null, 0, 0,
+            true, true
+        )
+    }
+
+    companion object {
+        private const val MINIMUM_SDK_VERSION = 23
     }
 }
 

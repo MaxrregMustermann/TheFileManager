@@ -143,6 +143,10 @@ class FileJobService : Service() {
             startJob(InstallApkJob(file), context)
         }
 
+        fun mergeSplitApks(splits: List<Path>, context: Context) {
+            startJob(MergeSplitApksJob(splits), context)
+        }
+
         fun open(file: Path, mimeType: MimeType, withChooser: Boolean, context: Context) {
             startJob(OpenFileJob(file, mimeType, withChooser), context)
         }

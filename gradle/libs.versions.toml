@@ -15,7 +15,7 @@ appiconloader = "1.5.0"
 # MorpheApp fork of REAndroid/ARSCLib, pinned to a commit because the project has no releases.
 # Parses and rewrites binary AndroidManifest.xml and resources.arsc when merging split APKs.
 arsclib = "9b742c412d"
-apksig = "2.3.0"
+apksig = "8.13.2"
 bouncycastle = "1.86"
 buildTools = "37.0.0"
 coil = "2.7.0"
