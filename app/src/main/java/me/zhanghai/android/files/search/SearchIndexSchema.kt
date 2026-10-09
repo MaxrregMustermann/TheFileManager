@@ -168,6 +168,10 @@ object SearchIndexSchema {
 
     const val COUNT = "SELECT COUNT(*) FROM $TABLE"
 
+    /** Counts a table by name, for checking whether the FTS table exists yet. */
+    const val COUNT_TABLE =
+        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = :name"
+
     const val COUNT_COLUMN = "COUNT(*)"
 
     const val CLEAR = "DELETE FROM $TABLE"

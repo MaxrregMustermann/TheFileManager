@@ -9,6 +9,7 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.sqlite.db.SimpleSQLiteQuery
 import androidx.sqlite.db.SupportSQLiteDatabase
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 
@@ -40,23 +41,25 @@ abstract class SearchIndexDatabase : RoomDatabase() {
      */
     fun ensureFtsIndex() {
         try {
-            val database = openHelper.writableDatabase
-            if (hasFtsTable(database)) {
+            if (hasFtsTable()) {
                 return
             }
             for (statement in SearchIndexSchema.CREATE_FTS_STATEMENTS) {
-                database.execSQL(statement)
+                fileIndexDao().executeForEffect(SimpleSQLiteQuery(statement))
             }
-            database.execSQL(SearchIndexSchema.REBUILD_FTS_INDEX)
+            fileIndexDao().executeForEffect(SimpleSQLiteQuery(SearchIndexSchema.REBUILD_FTS_INDEX))
         } catch (e: Exception) {
             e.printStackTrace()
         }
     }
 
-    private fun hasFtsTable(database: SupportSQLiteDatabase): Boolean =
-        database.query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
-            arrayOf(SearchIndexSchema.FTS_TABLE)
-        ).use { it.moveToFirst() }
+    private fun hasFtsTable(): Boolean =
+        try {
+            fileIndexDao().countTable(SearchIndexSchema.FTS_TABLE) > 0
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
 
     companion object {
         const val NAME = "search-index.db"

@@ -50,6 +50,24 @@ interface FileIndexDao {
     @RawQuery
     fun execute(query: SupportSQLiteQuery): Int
 
+    /**
+     * Runs a statement for its effect rather than for a row count.
+     *
+     * Room's raw-query form insists on a non-void return, and its `Int` form reports the number of
+     * affected rows, which a `CREATE TABLE` does not have. A transaction of one statement reports
+     * zero rows affected, which is all this needs: it exists to run the statement, not to count
+     * anything.
+     */
+    @Transaction
+    fun executeForEffect(query: SupportSQLiteQuery) {
+        execute(query)
+    }
+
+    /** How many tables in the database are called [name]. */
+    @SkipQueryVerification
+    @Query(SearchIndexSchema.COUNT_TABLE)
+    fun countTable(name: String): Int
+
     /** Replaces [entities] in a single transaction. */
     @Transaction
     fun upsert(entities: List<FileIndexEntity>) {
