@@ -593,14 +593,17 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
      * under is meaningless and the breadcrumb is hidden while they are showing.
      */
     private fun updateBreadcrumbLayoutVisibility() {
+        // Only the recent list hides it, because those files are from everywhere and have no single
+        // path to sit under. A search is still relative to the directory on screen, so the path
+        // stays: hiding it there left it missing after the search ended, since nothing was watching
+        // for the search to finish.
         binding.breadcrumbLayout.fadeToVisibilityUnsafe(
-            viewModel.fileListMode != FileListMode.RECENT && !viewModel.searchState.isSearching
+            viewModel.fileListMode != FileListMode.RECENT
         )
     }
 
     private fun onSearchViewExpandedChanged(expanded: Boolean) {
         updateViewSortMenuItems()
-        updateBreadcrumbLayoutVisibility()
     }
 
     private fun onFileListChanged(stateful: Stateful<List<FileItem>>) {
@@ -829,7 +832,6 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
             }
         }
         requireActivity().title = title
-        updateBreadcrumbLayoutVisibility()
         updateSelectAllMenuItem()
         updateOverlayToolbar()
         updateBottomToolbar()
