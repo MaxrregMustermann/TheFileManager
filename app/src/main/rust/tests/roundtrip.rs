@@ -539,3 +539,38 @@ fn the_call_sequence_the_app_uses_works_end_to_end() {
         assert_eq!(entries[1].1, b"two", "{}", format.extension());
     }
 }
+
+/// Reading before stepping to an entry used to underflow an index, which panics on a debug build
+/// and wraps on a release one. A panic at the JNI boundary aborts the process, so on a device it
+/// looked like the app crashing rather than as an error.
+#[test]
+fn readingBeforeSelectingAnEntryIsAnErrorRatherThanACrash() {
+    for format in MULTI_ENTRY_FORMATS {
+        let bytes = write_archive(format, &[("a", Some(b"x"))]);
+        let mut archive = ArchiveReader::open(Cursor::new(bytes), &[]).unwrap();
+        let error = archive
+            .read(&mut [0u8; 8])
+            .expect_err("reading before selecting an entry must fail");
+        assert!(
+            error.to_string().contains("before one was selected"),
+            "{}: {}",
+            format.extension(),
+            error
+        );
+    }
+}
+
+/// Draining an entry must not wrap its offset, which is the same abort by another route.
+#[test]
+fn drainingPastTheEndOfAnEntryReturnsZeroRatherThanWrapping() {
+    let bytes = write_archive(Format::Zip, &[("a", Some(b"xy"))]);
+    let mut archive = ArchiveReader::open(Cursor::new(bytes), &[]).unwrap();
+    archive.next_entry().unwrap().unwrap();
+    let mut buffer = [0u8; 8];
+    assert_eq!(archive.read(&mut buffer).unwrap(), 2);
+    for _ in 0..4 {
+        assert_eq!(archive.read(&mut buffer).unwrap(), 0);
+    }
+    // Skipping after the end has to stay quiet too, which is what a fully drained entry needs.
+    assert_eq!(archive.skip(16).unwrap(), 0);
+}

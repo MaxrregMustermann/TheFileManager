@@ -175,15 +175,21 @@ object ArchiveReader {
     /**
      * Reads [channel] with the Rust crates when they are available, and `libarchive` otherwise.
      *
-     * Both throw when the file is not an archive of any kind they can read, which is what makes the
-     * fallback safe to try: an archive one of them will not open is often one the other will.
+     * A file the Rust side refuses is retried with `libarchive` rather than reported, because an
+     * archive one implementation will not open is often one the other will, and the failure modes
+     * do not agree: `unarc-rs` reads a long tail that `libarchive` does not, and neither reads
+     * every format the other does.
      */
-    @Throws(Exception::class)
+    @Throws(IOException::class)
     private fun readArchive(
         channel: SeekableByteChannel, passwords: List<String>
     ): ReadableArchive {
         if (RustArchive.ensureAvailable()) {
-            return RustReadArchive(channel, passwords)
+            try {
+                return RustReadArchive(channel, passwords)
+            } catch (e: IOException) {
+                e.printStackTrace()
+            }
         }
         return ReadArchive(channel, passwords)
     }

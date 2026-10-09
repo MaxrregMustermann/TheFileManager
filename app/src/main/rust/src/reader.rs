@@ -26,6 +26,21 @@ pub struct Entry {
     pub is_symlink: bool,
 }
 
+/// The index of the entry that is currently selected.
+///
+/// Reading before stepping to an entry is a mistake in the caller. It used to be an index of
+/// `self.index - 1`, which wraps on a release build and panics on a debug one, and a panic
+/// reaching the JNI boundary aborts the process rather than unwinding into a Java exception.
+fn selectedIndex(index: usize) -> io::Result<usize> {
+    if index == 0 {
+        return Err(io::Error::new(
+            io::ErrorKind::Other,
+            "An entry was read before one was selected",
+        ));
+    }
+    Ok(index - 1)
+}
+
 /// Bytes of the entry that is currently selected, and how far through them the app has read.
 #[derive(Default)]
 pub struct Pending {
@@ -43,7 +58,10 @@ impl Pending {
     }
 
     fn drain_into(&mut self, output: &mut [u8]) -> usize {
-        let available = (self.data.len() - self.offset).min(output.len());
+        // Saturating, because an offset past the end would otherwise wrap on a release build and
+        // panic on a debug one, and a panic reaching the JNI boundary aborts the process rather than
+        // unwinding into a Java exception.
+        let available = self.data.len().saturating_sub(self.offset).min(output.len());
         output[..available].copy_from_slice(&self.data[self.offset..self.offset + available]);
         self.offset += available;
         if self.offset == self.data.len() && self.filled {
@@ -179,7 +197,8 @@ impl<R: Read + Seek> SevenZReader<R> {
         if self.pending.filled {
             return Ok(self.pending.drain_into(output));
         }
-        let wanted = self.entries[self.index - 1].name().to_owned();
+        let index = selectedIndex(self.index)?;
+        let wanted = self.entries[index].name().to_owned();
         self.pending.filled = true;
         // `read_file` rather than `for_each_entries`, because the latter is a single pass over a
         // solid archive: calling it once per entry would resume from wherever the previous call left
@@ -289,7 +308,7 @@ impl<R: Read + Seek> UnarcReader<R> {
         if self.pending.filled {
             return Ok(self.pending.drain_into(output));
         }
-        let index = self.index - 1;
+        let index = selectedIndex(self.index)?;
         self.pending.filled = true;
         let mut sink = Vec::new();
         self.archive

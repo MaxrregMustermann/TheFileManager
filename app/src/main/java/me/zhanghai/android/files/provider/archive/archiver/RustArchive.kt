@@ -87,6 +87,9 @@ internal object RustArchive {
     private const val METADATA_IS_DIRECTORY = 5
     private const val METADATA_IS_SYMLINK = 6
 
+    /** How many fields [nativeNextEntry] returns, which is what `METADATA_FIELDS` is on the Rust side. */
+    private const val METADATA_FIELDS = METADATA_IS_SYMLINK + 1
+
     @Volatile
     private var isAvailable: Boolean? = null
 
@@ -118,20 +121,38 @@ internal object RustArchive {
         channel: SeekableByteChannel,
         passwords: List<String>
     ) : Closeable {
-        private var handle: Long = nativeOpen(channel, passwords.toTypedArray())
+        private var handle: Long = nativeOpen(channel, passwords.toTypedArray()).also {
+            // Zero is what a failed open returns, and every other call would then report the
+            // archive as closed, which hides the real problem. Checked here instead.
+            check(it != 0L) { "The archive could not be opened" }
+        }
 
         private var isClosed = false
 
         @Throws(IOException::class)
         private fun handle(): Long {
-            check(!isClosed) { "The archive is closed" }
+            // An IOException rather than the IllegalStateException `check` would throw, because
+            // every caller of this class already handles one and would otherwise let it escape.
+            if (isClosed) {
+                throw IOException("The archive is closed")
+            }
             return handle
         }
 
+        /**
+         * Moves to the next entry, or returns null at the end of the archive.
+         *
+         * Null is the end of the archive, not a failure. A failure arrives as a thrown
+         * `IOException` from the native side, because it throws one before returning, so an empty
+         * return cannot mean both. Treating null as an error here made every archive fail the
+         * moment its last entry was reached.
+         */
         @Throws(IOException::class)
         fun readEntry(): Entry? {
-            val metadata = nativeNextEntry(handle())
-                ?: throw IOException("Could not read the next entry")
+            val metadata = nativeNextEntry(handle()) ?: return null
+            if (metadata.size != METADATA_FIELDS) {
+                throw IOException("The native side returned ${metadata.size} fields, not $METADATA_FIELDS")
+            }
             fun field(index: Int): String? = metadata[index]
             val name = field(METADATA_NAME) ?: throw IOException("An entry has no name")
             val size = field(METADATA_SIZE)?.toLongOrNull() ?: 0
@@ -229,7 +250,9 @@ internal object RustArchive {
         channel: SeekableByteChannel,
         format: ArchiveFormat
     ) : WritableArchive {
-        private var handle: Long = nativeCreate(channel, format.id)
+        private var handle: Long = nativeCreate(channel, format.id).also {
+            check(it != 0L) { "The archive could not be created" }
+        }
 
         private var isClosed = false
 
