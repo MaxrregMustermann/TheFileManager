@@ -32,13 +32,11 @@
 -keep class me.zhanghai.android.files.provider.archive.archiver.RustArchive {
     *;
 }
--keep class * extends java8.nio.channels.SeekableByteChannel {
-    # Reached from Rust by name, with their exact signatures. Renaming any of these breaks the
-    # archive support at runtime rather than at build time, which is why each is written out.
-    read(Ljava/nio/ByteBuffer;)I;
-    write(Ljava/nio/ByteBuffer;)I;
-    position(J)J;
-    size()J;
+# The channel the archive support reads and writes through. Rust looks these up by name against
+# this class, so renaming or removing any of them breaks archives at runtime rather than at build
+# time. See ArchiveChannel for why the app's own channels are not handed over directly.
+-keep class me.zhanghai.android.files.provider.archive.archiver.ArchiveChannel {
+    public <methods>;
 }
 
 # App

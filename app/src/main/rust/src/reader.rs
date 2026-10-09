@@ -31,12 +31,9 @@ pub struct Entry {
 /// Reading before stepping to an entry is a mistake in the caller. It used to be an index of
 /// `self.index - 1`, which wraps on a release build and panics on a debug one, and a panic
 /// reaching the JNI boundary aborts the process rather than unwinding into a Java exception.
-fn selectedIndex(index: usize) -> io::Result<usize> {
+fn selected_index(index: usize) -> io::Result<usize> {
     if index == 0 {
-        return Err(io::Error::new(
-            io::ErrorKind::Other,
-            "An entry was read before one was selected",
-        ));
+        return Err(io::Error::other("An entry was read before one was selected"));
     }
     Ok(index - 1)
 }
@@ -197,7 +194,7 @@ impl<R: Read + Seek> SevenZReader<R> {
         if self.pending.filled {
             return Ok(self.pending.drain_into(output));
         }
-        let index = selectedIndex(self.index)?;
+        let index = selected_index(self.index)?;
         let wanted = self.entries[index].name().to_owned();
         self.pending.filled = true;
         // `read_file` rather than `for_each_entries`, because the latter is a single pass over a
@@ -308,7 +305,7 @@ impl<R: Read + Seek> UnarcReader<R> {
         if self.pending.filled {
             return Ok(self.pending.drain_into(output));
         }
-        let index = selectedIndex(self.index)?;
+        let index = selected_index(self.index)?;
         self.pending.filled = true;
         let mut sink = Vec::new();
         self.archive

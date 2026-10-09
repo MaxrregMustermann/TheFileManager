@@ -12,6 +12,15 @@ use jni::{AttachGuard, JNIEnv, JavaVM};
 /// How much data moves per JNI call.
 pub const CHUNK_SIZE: usize = 64 * 1024;
 
+/// How many local references each bridge call is allowed to keep alive at once.
+///
+/// A JNI local reference lives until the native method that created it returns, so a call that
+/// reads a whole archive would otherwise accumulate one per read and overflow the 512 slot table,
+/// which aborts the process rather than failing the call. Each operation gets a frame of its own
+/// instead, so its references are released when that operation ends rather than when the whole
+/// method does.
+const LOCAL_FRAME: i32 = 16;
+
 /// Attaches the calling thread and hands back the guard, which detaches on drop.
 fn attach<'a>(vm: &'a JavaVM) -> io::Result<AttachGuard<'a>> {
     vm.attach_current_thread()
@@ -56,22 +65,22 @@ impl Read for ChannelReader {
             return Ok(0);
         }
         let mut guard = attach(&self.vm)?;
-        let env = &mut *guard;
-        let channel = env
-            .new_local_ref(self.channel.as_obj())
-            .map_err(java_error)?;
-        // A direct buffer over the caller's own memory, so the bytes land where Rust expects them
-        // without a second copy back. The length is what the channel is told it may fill, which is
-        // not the whole slice: the caller may have handed over a buffer larger than it wants read.
         let wanted = buffer.len();
-        // SAFETY: the pointer is the caller's own slice, `wanted` is its length, and the buffer is
-        // dropped at the end of this call, before the slice can be moved or resized.
-        let direct = unsafe { env.new_direct_byte_buffer(buffer.as_mut_ptr(), wanted) }
-            .map_err(java_error)?;
-        let read = env
-            .call_method(&channel, "read", CHANNEL_READ, &[(&direct).into()])
-            .and_then(|value| value.i())
-            .map_err(java_error)?;
+        // SAFETY: the pointer is the caller's own slice, `wanted` is its length, and the frame is
+        // closed before this returns, before the slice can be moved or resized.
+        let read = unsafe {
+            guard.with_local_frame(LOCAL_FRAME, |env| {
+                let channel = env
+                    .new_local_ref(self.channel.as_obj())?;
+                // A direct buffer over the caller's own memory, so the bytes land where Rust expects
+                // them without a second copy back. The length is what the channel is told it may
+                // fill, which is not the whole slice: the caller may have handed over a larger one.
+                let direct = env.new_direct_byte_buffer(buffer.as_mut_ptr(), wanted)?;
+                env.call_method(&channel, "read", CHANNEL_READ, &[(&direct).into()])?
+                    .i()
+            })
+        }
+        .map_err(java_error)?;
         if read > 0 {
             self.position += read as u64;
         }
@@ -94,18 +103,18 @@ impl Seek for ChannelReader {
             ));
         }
         let mut guard = attach(&self.vm)?;
-        let env = &mut *guard;
-        let channel = env
-            .new_local_ref(self.channel.as_obj())
-            .map_err(java_error)?;
-        let new_position = env
-            .call_method(
-                &channel,
-                "position",
-                "(J)J",
-                &[jni::objects::JValue::Long(target)],
-            )
-            .and_then(|value| value.j())
+        let new_position = guard
+            .with_local_frame(LOCAL_FRAME, |env| {
+                let channel = env
+                    .new_local_ref(self.channel.as_obj())?;
+                env.call_method(
+                    &channel,
+                    "position",
+                    "(J)J",
+                    &[jni::objects::JValue::Long(target)],
+                )?
+                .j()
+            })
             .map_err(java_error)?;
         if new_position < 0 {
             return Err(io::Error::new(
@@ -121,13 +130,12 @@ impl Seek for ChannelReader {
 impl ChannelReader {
     fn size(&mut self) -> io::Result<u64> {
         let mut guard = attach(&self.vm)?;
-        let env = &mut *guard;
-        let channel = env
-            .new_local_ref(self.channel.as_obj())
-            .map_err(java_error)?;
-        let size = env
-            .call_method(&channel, "size", "()J", &[])
-            .and_then(|value| value.j())
+        let size = guard
+            .with_local_frame(LOCAL_FRAME, |env| {
+                let channel = env
+                    .new_local_ref(self.channel.as_obj())?;
+                env.call_method(&channel, "size", "()J", &[])?.j()
+            })
             .map_err(java_error)?;
         Ok(size.max(0) as u64)
     }
@@ -158,16 +166,17 @@ impl Write for ChannelWriter {
             let end = (written + self.buffer.len()).min(data.len());
             let chunk = &data[written..end];
             let mut guard = attach(&self.vm)?;
-            let env = &mut *guard;
-            let channel = env
-                .new_local_ref(self.channel.as_obj())
-                .map_err(java_error)?;
-            let buffer = wrap(env, chunk)?;
-            // A channel reports what it took rather than throwing when it takes less, so a short
-            // write has to be resumed rather than treated as done.
-            let accepted = env
-                .call_method(&channel, "write", CHANNEL_WRITE, &[(&buffer).into()])
-                .and_then(|value| value.i())
+            // A frame per chunk, because writing an archive is one JNI call that pushes every byte
+            // through here, and one local reference set per chunk would overflow the table.
+            let accepted = guard
+                .with_local_frame(LOCAL_FRAME, |env| {
+                    let channel = env.new_local_ref(self.channel.as_obj())?;
+                    let buffer = wrap(env, chunk)?;
+                    // A channel reports what it took rather than throwing when it takes less, so a
+                    // short write has to be resumed rather than treated as done.
+                    env.call_method(&channel, "write", CHANNEL_WRITE, &[(&buffer).into()])?
+                        .i()
+                })
                 .map_err(java_error)?;
             if accepted <= 0 {
                 return Err(io::Error::new(
@@ -186,18 +195,15 @@ impl Write for ChannelWriter {
 }
 
 /// `ByteBuffer.wrap`, which is how a read-only buffer over existing bytes is made.
-fn wrap<'a>(env: &mut JNIEnv<'a>, data: &[u8]) -> io::Result<JObject<'a>> {
-    let array = env.byte_array_from_slice(data).map_err(java_error)?;
-    let buffer = env
-        .call_static_method(
-            "java/nio/ByteBuffer",
-            "wrap",
-            "([B)Ljava/nio/ByteBuffer;",
-            &[(&array).into()],
-        )
-        .map_err(java_error)?;
-    let buffer = buffer.l().map_err(java_error)?;
-    Ok(JObject::from(buffer))
+fn wrap<'a>(env: &mut JNIEnv<'a>, data: &[u8]) -> jni::errors::Result<JObject<'a>> {
+    let array = env.byte_array_from_slice(data)?;
+    let buffer = env.call_static_method(
+        "java/nio/ByteBuffer",
+        "wrap",
+        "([B)Ljava/nio/ByteBuffer;",
+        &[(&array).into()],
+    )?;
+    buffer.l()
 }
 
 impl Seek for ChannelWriter {
@@ -213,18 +219,17 @@ impl Seek for ChannelWriter {
             ));
         }
         let mut guard = attach(&self.vm)?;
-        let env = &mut *guard;
-        let channel = env
-            .new_local_ref(self.channel.as_obj())
-            .map_err(java_error)?;
-        let new_position = env
-            .call_method(
-                &channel,
-                "position",
-                "(J)J",
-                &[jni::objects::JValue::Long(offset)],
-            )
-            .and_then(|value| value.j())
+        let new_position = guard
+            .with_local_frame(LOCAL_FRAME, |env| {
+                let channel = env.new_local_ref(self.channel.as_obj())?;
+                env.call_method(
+                    &channel,
+                    "position",
+                    "(J)J",
+                    &[jni::objects::JValue::Long(offset)],
+                )?
+                .j()
+            })
             .map_err(java_error)?;
         Ok(new_position.max(0) as u64)
     }
@@ -254,28 +259,28 @@ impl Read for EntrySource {
             return Ok(0);
         }
         let mut guard = attach(&self.vm)?;
-        let env = &mut *guard;
-        let source = env
-            .new_local_ref(self.source.as_obj())
-            .map_err(java_error)?;
-        let array: JByteArray = env
-            .byte_array_from_slice(&self.buffer)
-            .map_err(java_error)?;
-        // `InputStream.read(byte[], int, int)`, which is the one overload whose signature is fixed
-        // by the platform rather than by this crate, so it does not have to change in step with the
-        // Kotlin side.
-        let accepted = env
-            .call_method(
-                &source,
-                "read",
-                "([BII)I",
-                &[
-                    (&array).into(),
-                    jni::objects::JValue::Int(0),
-                    jni::objects::JValue::Int(self.buffer.len() as jint),
-                ],
-            )
-            .and_then(|value| value.i())
+        let length = self.buffer.len() as jint;
+        // A frame per chunk, for the same reason the writer's is: writing one entry is one JNI call
+        // that pulls the whole entry through here.
+        let accepted = guard
+            .with_local_frame(LOCAL_FRAME, |env| {
+                let source = env.new_local_ref(self.source.as_obj())?;
+                let array: JByteArray = env.byte_array_from_slice(&self.buffer)?;
+                // `InputStream.read(byte[], int, int)`, which is the one overload whose signature is
+                // fixed by the platform rather than by this crate, so it does not have to change in
+                // step with the Kotlin side.
+                env.call_method(
+                    &source,
+                    "read",
+                    "([BII)I",
+                    &[
+                        (&array).into(),
+                        jni::objects::JValue::Int(0),
+                        jni::objects::JValue::Int(length),
+                    ],
+                )?
+                .i()
+            })
             .map_err(java_error)?
             .max(0) as usize;
         let accepted = accepted.min(self.buffer.len()).min(output.len());

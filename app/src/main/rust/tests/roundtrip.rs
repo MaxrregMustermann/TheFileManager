@@ -544,7 +544,7 @@ fn the_call_sequence_the_app_uses_works_end_to_end() {
 /// and wraps on a release one. A panic at the JNI boundary aborts the process, so on a device it
 /// looked like the app crashing rather than as an error.
 #[test]
-fn readingBeforeSelectingAnEntryIsAnErrorRatherThanACrash() {
+fn reading_before_selecting_an_entry_is_an_error_rather_than_a_crash() {
     for format in MULTI_ENTRY_FORMATS {
         let bytes = write_archive(format, &[("a", Some(b"x"))]);
         let mut archive = ArchiveReader::open(Cursor::new(bytes), &[]).unwrap();
@@ -562,7 +562,7 @@ fn readingBeforeSelectingAnEntryIsAnErrorRatherThanACrash() {
 
 /// Draining an entry must not wrap its offset, which is the same abort by another route.
 #[test]
-fn drainingPastTheEndOfAnEntryReturnsZeroRatherThanWrapping() {
+fn draining_past_the_end_of_an_entry_returns_zero_rather_than_wrapping() {
     let bytes = write_archive(Format::Zip, &[("a", Some(b"xy"))]);
     let mut archive = ArchiveReader::open(Cursor::new(bytes), &[]).unwrap();
     archive.next_entry().unwrap().unwrap();

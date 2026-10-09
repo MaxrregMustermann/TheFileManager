@@ -121,7 +121,7 @@ internal object RustArchive {
         channel: SeekableByteChannel,
         passwords: List<String>
     ) : Closeable {
-        private var handle: Long = nativeOpen(channel, passwords.toTypedArray()).also {
+        private var handle: Long = nativeOpen(ArchiveChannel(channel), passwords.toTypedArray()).also {
             // Zero is what a failed open returns, and every other call would then report the
             // archive as closed, which hides the real problem. Checked here instead.
             check(it != 0L) { "The archive could not be opened" }
@@ -250,7 +250,7 @@ internal object RustArchive {
         channel: SeekableByteChannel,
         format: ArchiveFormat
     ) : WritableArchive {
-        private var handle: Long = nativeCreate(channel, format.id).also {
+        private var handle: Long = nativeCreate(ArchiveChannel(channel), format.id).also {
             check(it != 0L) { "The archive could not be created" }
         }
 
@@ -305,7 +305,7 @@ internal object RustArchive {
     }
 
     private external fun nativeOpen(
-        channel: SeekableByteChannel, passwords: Array<String>
+        channel: ArchiveChannel, passwords: Array<String>
     ): Long
 
     private external fun nativeNextEntry(handle: Long): Array<String?>?
@@ -316,7 +316,7 @@ internal object RustArchive {
 
     private external fun nativeCloseRead(handle: Long)
 
-    private external fun nativeCreate(channel: SeekableByteChannel, format: Int): Long
+    private external fun nativeCreate(channel: ArchiveChannel, format: Int): Long
 
     private external fun nativeWriteEntry(
         handle: Long, metadata: Array<String?>, source: InputStream
