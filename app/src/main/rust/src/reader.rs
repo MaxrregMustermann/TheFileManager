@@ -313,11 +313,12 @@ impl<R: Read + Seek> UnarcReader<R> {
         }
         let index = selected_index(self.index)?;
         self.pending.filled = true;
-        let mut sink = Vec::new();
-        self.archive
-            .read_to(&self.entries[index], &mut sink)
+        // `read` rather than `read_to`: the latter decodes the entry into a vector of its own and
+        // then copies that into the one given to it, so a large entry is resident twice over.
+        self.pending.data = self
+            .archive
+            .read(&self.entries[index])
             .map_err(|error| io::Error::other(format!("{error:?}")))?;
-        self.pending.data = sink;
         Ok(self.pending.drain_into(output))
     }
 }
