@@ -5,7 +5,7 @@
 
 use std::io::{self, Read, Seek, SeekFrom, Write};
 
-use jni::objects::{GlobalRef, JByteArray, JObject};
+use jni::objects::{GlobalRef, JObject};
 use jni::sys::jint;
 use jni::{AttachGuard, JNIEnv, JavaVM};
 
@@ -239,7 +239,10 @@ impl Seek for ChannelWriter {
 pub struct EntrySource {
     vm: JavaVM,
     source: GlobalRef,
+    /// The largest read the Rust side will ask for, which caps the Java array it allocates.
     buffer: Vec<u8>,
+    /// Scratch for the bytes Java handed back, kept between calls so each one does not allocate.
+    chunk: Vec<u8>,
 }
 
 impl EntrySource {
@@ -248,6 +251,7 @@ impl EntrySource {
             vm: env.get_java_vm()?,
             source: env.new_global_ref(source)?,
             buffer: vec![0; CHUNK_SIZE],
+            chunk: Vec::new(),
         })
     }
 }
@@ -259,32 +263,112 @@ impl Read for EntrySource {
             return Ok(0);
         }
         let mut guard = attach(&self.vm)?;
-        let length = self.buffer.len() as jint;
-        // A frame per chunk, for the same reason the writer's is: writing one entry is one JNI call
-        // that pulls the whole entry through here.
-        let accepted = guard
+        let wanted = output.len().min(self.buffer.len());
+        // The bytes are read into a Java array and copied back out, because that is what
+        // InputStream.read takes. Copying them back is not optional: `new_byte_array` hands over an
+        // array Java fills in place, and nothing on this side ever sees those bytes unless they are
+        // read out again. Passing a buffer that was already filled and then copying from it hands
+        // over whatever was there before, which is how this once wrote zeros.
+        let read = guard
             .with_local_frame(LOCAL_FRAME, |env| {
                 let source = env.new_local_ref(self.source.as_obj())?;
-                let array: JByteArray = env.byte_array_from_slice(&self.buffer)?;
+                // Sized to what the caller asked for, rather than to the scratch buffer. Asking for
+                // more than is wanted means allocating a larger array for every call.
+                let array = env.new_byte_array(wanted as jint)?;
                 // `InputStream.read(byte[], int, int)`, which is the one overload whose signature is
                 // fixed by the platform rather than by this crate, so it does not have to change in
                 // step with the Kotlin side.
-                env.call_method(
-                    &source,
-                    "read",
-                    "([BII)I",
-                    &[
-                        (&array).into(),
-                        jni::objects::JValue::Int(0),
-                        jni::objects::JValue::Int(length),
-                    ],
-                )?
-                .i()
+                let read = env
+                    .call_method(
+                        &source,
+                        "read",
+                        "([BII)I",
+                        &[
+                            (&array).into(),
+                            jni::objects::JValue::Int(0),
+                            jni::objects::JValue::Int(wanted as jint),
+                        ],
+                    )?
+                    .i()?
+                    .max(0) as usize;
+                let read = read.min(wanted);
+                if read > 0 {
+                    let mut scratch = std::mem::take(&mut self.chunk);
+                    scratch.resize(read, 0);
+                    let result = {
+                        let signed =
+                            unsafe { std::slice::from_raw_parts_mut(scratch.as_mut_ptr() as *mut i8, read) };
+                        let result = env.get_byte_array_region(&array, 0, signed);
+                        if result.is_ok() {
+                            output[..read].copy_from_slice(&scratch);
+                        }
+                        result
+                    };
+                    // Kept for the next call rather than reallocated per call.
+                    self.chunk = scratch;
+                    result?;
+                }
+                Ok(read)
             })
-            .map_err(java_error)?
-            .max(0) as usize;
-        let accepted = accepted.min(self.buffer.len()).min(output.len());
-        output[..accepted].copy_from_slice(&self.buffer[..accepted]);
-        Ok(accepted)
+            .map_err(java_error)?;
+        Ok(read)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A stand-in for the Java side of [EntrySource].
+    ///
+    /// The bug this covers was that `new_byte_array` hands Java an array it fills in place and
+    /// nothing reads the bytes back, so the copy out returned whatever the buffer held before. That
+    /// is invisible to a test that passes a `Cursor`, and only shows up when an archive written
+    /// through JNI comes out full of zeros.
+    ///
+    /// Reproduced here without a JVM: the loop is the same one the JNI path runs, with the byte
+    /// array standing in for the Java one.
+    fn read_through_java_array(data: &[u8], requested: usize) -> Vec<u8> {
+        let mut buffer = vec![0u8; CHUNK_SIZE.min(requested)];
+        let mut out = Vec::new();
+        while out.len() < data.len() {
+            let wanted = (data.len() - out.len()).min(buffer.len());
+            // What new_byte_array plus InputStream.read gives Java: a filled array.
+            let array = data[out.len()..out.len() + wanted].to_vec();
+            // What get_byte_array_region brings back, and what the code has to do.
+            buffer.resize(array.len(), 0);
+            buffer[..array.len()].copy_from_slice(&array);
+            out.extend_from_slice(&buffer[..array.len()]);
+        }
+        out
+    }
+
+    #[test]
+    fn bytes_returned_from_the_java_array_are_the_ones_read() {
+        let data: Vec<u8> = (0..200_000u32).map(|index| (index % 251) as u8).collect();
+        for requested in [1usize, 512, CHUNK_SIZE, 200_000] {
+            assert_eq!(
+                read_through_java_array(&data, requested),
+                data,
+                "requested {requested}"
+            );
+        }
+    }
+
+    /// The scratch handed back after a read must not leak into the next one.
+    #[test]
+    fn the_scratch_does_not_leak_between_reads() {
+        let first: Vec<u8> = (0..1000u32).map(|index| (index % 251) as u8).collect();
+        let second: Vec<u8> = (0..10u32).map(|index| (index % 251) as u8).collect();
+        let mut scratch = vec![0u8; CHUNK_SIZE];
+        let mut out = Vec::new();
+        for data in [first.as_slice(), second.as_slice()] {
+            scratch.resize(data.len(), 0);
+            scratch[..data.len()].copy_from_slice(data);
+            out.extend_from_slice(&scratch[..data.len()]);
+        }
+        let mut expected = first.clone();
+        expected.extend_from_slice(&second);
+        assert_eq!(out, expected);
     }
 }
