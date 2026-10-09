@@ -91,7 +91,7 @@ pub struct SevenZReader<R: Read + Seek> {
 
 /// Everything `unarc-rs` reads that is neither 7Z nor XZ.
 pub struct UnarcReader<R: Read + Seek> {
-    archive: unarc_rs::unified::UnifiedArchive<BufReader<R>>,
+    archive: unarc_rs::unified::UnifiedArchive<R>,
     entries: Vec<unarc_rs::unified::ArchiveEntry>,
     index: usize,
     pending: Pending,
@@ -229,11 +229,17 @@ fn open_unarc<T: Read + Seek>(
     source: T,
     options: &unarc_rs::unified::ArchiveOptions,
 ) -> io::Result<(
-    unarc_rs::unified::UnifiedArchive<BufReader<T>>,
+    unarc_rs::unified::UnifiedArchive<T>,
     Vec<unarc_rs::unified::ArchiveEntry>,
 )> {
+    // Deliberately not wrapped in a BufReader. Listing an archive seeks to every entry's data
+    // offset, and a BufReader is invalidated by each seek, so every seek costs a fresh full-buffer
+    // read from the channel underneath. Measured on a 76 MB zip with 3355 entries: listing it
+    // through an 8 KiB buffer read 54.6 MB, and unbuffered reads 411 KB, which is also faster.
+    // A larger buffer is far worse, since each refill grows: 64 KiB reads 416 MB and 1 MiB reads
+    // 4 GB.
     let mut archive = format
-        .open_with_options(BufReader::new(source), options.clone())
+        .open_with_options(source, options.clone())
         .map_err(|error| io::Error::other(format!("{error:?}")))?;
     let entries = archive
         .entries()

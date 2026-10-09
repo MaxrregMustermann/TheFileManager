@@ -639,7 +639,7 @@ checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
 [[package]]
 name = "oxiarc-archive"
 version = "0.4.2"
-source = "git+https://github.com/MaxrregMustermann/oxiarc?rev=d595d6b#d595d6b6ca2dd56d7a170d8279d67934ce04a8bc"
+source = "git+https://github.com/MaxrregMustermann/oxiarc?rev=93b17af#93b17af8c46011acc28ef699d31274a2123a95e4"
 dependencies = [
  "encoding_rs",
  "oxiarc-brotli",
@@ -656,7 +656,7 @@ dependencies = [
 [[package]]
 name = "oxiarc-brotli"
 version = "0.4.2"
-source = "git+https://github.com/MaxrregMustermann/oxiarc?rev=d595d6b#d595d6b6ca2dd56d7a170d8279d67934ce04a8bc"
+source = "git+https://github.com/MaxrregMustermann/oxiarc?rev=93b17af#93b17af8c46011acc28ef699d31274a2123a95e4"
 dependencies = [
  "oxiarc-core",
  "thiserror 2.0.21",
@@ -665,7 +665,7 @@ dependencies = [
 [[package]]
 name = "oxiarc-bzip2"
 version = "0.4.2"
-source = "git+https://github.com/MaxrregMustermann/oxiarc?rev=d595d6b#d595d6b6ca2dd56d7a170d8279d67934ce04a8bc"
+source = "git+https://github.com/MaxrregMustermann/oxiarc?rev=93b17af#93b17af8c46011acc28ef699d31274a2123a95e4"
 dependencies = [
  "oxiarc-core",
 ]
@@ -673,7 +673,7 @@ dependencies = [
 [[package]]
 name = "oxiarc-core"
 version = "0.4.2"
-source = "git+https://github.com/MaxrregMustermann/oxiarc?rev=d595d6b#d595d6b6ca2dd56d7a170d8279d67934ce04a8bc"
+source = "git+https://github.com/MaxrregMustermann/oxiarc?rev=93b17af#93b17af8c46011acc28ef699d31274a2123a95e4"
 dependencies = [
  "thiserror 2.0.21",
 ]
@@ -681,7 +681,7 @@ dependencies = [
 [[package]]
 name = "oxiarc-deflate"
 version = "0.4.2"
-source = "git+https://github.com/MaxrregMustermann/oxiarc?rev=d595d6b#d595d6b6ca2dd56d7a170d8279d67934ce04a8bc"
+source = "git+https://github.com/MaxrregMustermann/oxiarc?rev=93b17af#93b17af8c46011acc28ef699d31274a2123a95e4"
 dependencies = [
  "oxiarc-core",
 ]
@@ -689,7 +689,7 @@ dependencies = [
 [[package]]
 name = "oxiarc-lz4"
 version = "0.4.2"
-source = "git+https://github.com/MaxrregMustermann/oxiarc?rev=d595d6b#d595d6b6ca2dd56d7a170d8279d67934ce04a8bc"
+source = "git+https://github.com/MaxrregMustermann/oxiarc?rev=93b17af#93b17af8c46011acc28ef699d31274a2123a95e4"
 dependencies = [
  "oxiarc-core",
 ]
@@ -697,7 +697,7 @@ dependencies = [
 [[package]]
 name = "oxiarc-lzhuf"
 version = "0.4.2"
-source = "git+https://github.com/MaxrregMustermann/oxiarc?rev=d595d6b#d595d6b6ca2dd56d7a170d8279d67934ce04a8bc"
+source = "git+https://github.com/MaxrregMustermann/oxiarc?rev=93b17af#93b17af8c46011acc28ef699d31274a2123a95e4"
 dependencies = [
  "oxiarc-core",
 ]
@@ -705,7 +705,7 @@ dependencies = [
 [[package]]
 name = "oxiarc-lzma"
 version = "0.4.2"
-source = "git+https://github.com/MaxrregMustermann/oxiarc?rev=d595d6b#d595d6b6ca2dd56d7a170d8279d67934ce04a8bc"
+source = "git+https://github.com/MaxrregMustermann/oxiarc?rev=93b17af#93b17af8c46011acc28ef699d31274a2123a95e4"
 dependencies = [
  "oxiarc-core",
 ]
@@ -713,7 +713,7 @@ dependencies = [
 [[package]]
 name = "oxiarc-snappy"
 version = "0.4.2"
-source = "git+https://github.com/MaxrregMustermann/oxiarc?rev=d595d6b#d595d6b6ca2dd56d7a170d8279d67934ce04a8bc"
+source = "git+https://github.com/MaxrregMustermann/oxiarc?rev=93b17af#93b17af8c46011acc28ef699d31274a2123a95e4"
 dependencies = [
  "oxiarc-core",
  "thiserror 2.0.21",
@@ -722,7 +722,7 @@ dependencies = [
 [[package]]
 name = "oxiarc-zstd"
 version = "0.4.2"
-source = "git+https://github.com/MaxrregMustermann/oxiarc?rev=d595d6b#d595d6b6ca2dd56d7a170d8279d67934ce04a8bc"
+source = "git+https://github.com/MaxrregMustermann/oxiarc?rev=93b17af#93b17af8c46011acc28ef699d31274a2123a95e4"
 dependencies = [
  "oxiarc-core",
 ]

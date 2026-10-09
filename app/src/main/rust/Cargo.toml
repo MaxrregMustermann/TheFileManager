@@ -22,8 +22,10 @@ sevenz-rust2 = { version = "0.23", default-features = false, features = [
     "util",
 ] }
 # Everything except 7Z, for writing, plus XZ for reading. Forked for its streaming writers:
-# upstream buffered whole entries, which a file manager cannot afford for large files.
-oxiarc-archive = { git = "https://github.com/MaxrregMustermann/oxiarc", rev = "d595d6b" }
+# upstream buffered whole entries, which a file manager cannot afford for large files. The pinned
+# revision also reuses the deflate encoder across entries and writes headers in one piece, which
+# matters because every write here crosses into Java.
+oxiarc-archive = { git = "https://github.com/MaxrregMustermann/oxiarc", rev = "93b17af" }
 # Everything except 7Z and XZ, for reading.
 unarc-rs = { version = "0.7", default-features = false }
 
