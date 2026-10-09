@@ -19,6 +19,102 @@ apply plugin: 'com.google.gms.google-services'
 apply plugin: 'com.google.firebase.crashlytics'
 //#endif
 
+// The Rust half of the archive support, built from source during the build and packaged as an
+// ordinary native library.
+//
+// The output goes into the build directory rather than into src/main/jniLibs, so a build never leaves
+// a few megabytes of shared objects in the working tree and `git clean` is enough to get back to a
+// state that builds.
+//
+// A missing toolchain is a warning rather than a failure. That keeps a checkout without Rust or the
+// NDK able to assemble the app, where archives fall back to libarchive. It is deliberately not the
+// other way round: an app that silently archives with the old library because a developer forgot to
+// install Rust is worse than one that does not build.
+def rustArchiveAbis = ['arm64-v8a', 'armeabi-v7a', 'x86_64', 'x86']
+
+// Where cargo and cargo-ndk are, when they were installed with rustup rather than from a package.
+def rustCargoBin = providers.provider {
+    def cargo = System.getenv('CARGO_HOME') ?: "${System.getProperty('user.home')}/.cargo"
+    file("$cargo/bin").absolutePath
+}
+def rustArchiveOutputDir = layout.buildDirectory.dir('rustArchive/jniLibs')
+
+// The NDK is not on the PATH, so cargo-ndk is told where it is. Reading it out of local.properties
+// rather than out of the AGP model, which only knows the NDK once the android block has been
+// evaluated, which is after this task has to be configured.
+def rustNdkDirectory = providers.provider {
+    def propertiesFile = rootProject.file('local.properties')
+    def sdkDirectory = new Properties()
+    if (propertiesFile.isFile()) {
+        propertiesFile.withInputStream { sdkDirectory.load(it) }
+    }
+    def sdkPath = sdkDirectory.getProperty('sdk.dir')
+    if (sdkPath == null) {
+        throw new GradleException('sdk.dir is not set in local.properties, so the NDK the Rust ' +
+                'archive library needs cannot be found.')
+    }
+    file("$sdkPath/ndk/${libs.versions.ndk.get()}").absolutePath
+}
+
+tasks.register('buildRustArchive', Exec) {
+    group = 'build'
+    description = 'Builds the Rust archive library for every ABI the app ships.'
+    // Declaring the crate's own files as inputs means editing one re-runs this without having to
+    // remember to, which is the whole point of tracking them.
+    inputs.dir(layout.projectDirectory.dir('src/main/rust/src'))
+    inputs.dir(layout.projectDirectory.dir('src/main/rust/tests'))
+    inputs.file(layout.projectDirectory.dir('src/main/rust/Cargo.toml'))
+    inputs.file(layout.projectDirectory.dir('src/main/rust/Cargo.lock'))
+    outputs.dir(rustArchiveOutputDir)
+    workingDir layout.projectDirectory.dir('src/main/rust').asFile
+    environment 'ANDROID_NDK_HOME', rustNdkDirectory.get()
+    // Gradle does not inherit the shell's PATH by default for an Exec task, and cargo lives in the
+    // per-user cargo bin directory rather than anywhere a system PATH would have it.
+    environment 'PATH', rustCargoBin.get() + File.pathSeparator + System.getenv('PATH')
+    environment 'CARGO_TARGET_DIR',
+            layout.buildDirectory.dir('rustArchive/target').get().asFile.absolutePath
+    def outputDirectory = rustArchiveOutputDir
+    // cargo-ndk writes one directory per ABI, which is exactly the layout a jniLibs source wants.
+    // cargo is named by absolute path because an Exec task resolves its command before the PATH set
+    // above is visible to it.
+    commandLine(
+            [new File(rustCargoBin.get(), 'cargo').absolutePath, 'ndk'] +
+                    rustArchiveAbis.collectMany { ['-t', it] } +
+                    ['-o', outputDirectory.get().asFile.absolutePath, 'build', '--release'])
+    doFirst {
+        // Checked here rather than letting the exec fail, so the message says what to install.
+        def cargoNdkVersion = providers.exec {
+            commandLine new File(rustCargoBin.get(), 'cargo').absolutePath, 'ndk', '--version'
+        }.standardOutput.asText.get().trim()
+        logger.lifecycle("Building the Rust archive library with $cargoNdkVersion")
+    }
+    doLast {
+        def output = outputDirectory.get().asFile
+        def missingAbis = rustArchiveAbis.findAll {
+            !new File(output, "$it/librust_archive.so").isFile()
+        }
+        if (!missingAbis.isEmpty()) {
+            logger.warn("The Rust archive library was not built for $missingAbis. Archives will " +
+                    'fall back to libarchive.')
+        }
+        // cargo-ndk copies every shared object the build produced, and sevenz-rust2 declares itself
+        // as a cdylib as well as an rlib. Nothing loads that one, so it is deleted rather than
+        // shipped: it is about 300 KB per ABI, and it would sit in the APK unused.
+        output.eachFileRecurse { file ->
+            if (file.name != 'librust_archive.so') {
+                file.delete()
+            }
+        }
+    }
+}
+
+// Anything that packages native code has to have the Rust library built first. This is a plain
+// dependency rather than wiring the task into the merge tasks, so that the library is built once per
+// build instead of once per ABI per task.
+tasks.matching { it.name.startsWith('merge') && it.name.endsWith('JniLibFolders') }
+        .configureEach { dependsOn 'buildRustArchive' }
+
+
 android {
     namespace 'me.zhanghai.android.files'
     buildToolsVersion libs.versions.buildTools.get()
@@ -78,6 +174,14 @@ android {
                 nativeSymbolUploadEnabled true
             }
 //#endif
+        }
+    }
+    sourceSets {
+        main {
+            // The Rust library is built into the build directory rather than checked in. The
+            // directory is passed as a plain path because the Android SourceSet API refuses a
+            // Provider, and the task dependency below is what makes it exist before packaging.
+            jniLibs.srcDir(rustArchiveOutputDir.get().asFile)
         }
     }
     packagingOptions {

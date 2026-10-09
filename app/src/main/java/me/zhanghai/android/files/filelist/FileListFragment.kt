@@ -80,6 +80,7 @@ import me.zhanghai.android.files.navigation.BookmarkDirectories
 import me.zhanghai.android.files.navigation.BookmarkDirectory
 import me.zhanghai.android.files.navigation.NavigationFragment
 import me.zhanghai.android.files.navigation.NavigationRootMapLiveData
+import me.zhanghai.android.files.provider.archive.archiver.ArchiveFormat
 import me.zhanghai.android.files.provider.archive.createArchiveRootPath
 import me.zhanghai.android.files.provider.archive.isArchivePath
 import me.zhanghai.android.files.provider.linux.isLinuxPath
@@ -1072,13 +1073,12 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
     override fun archive(
         files: FileItemSet,
         name: String,
-        format: Int,
-        filter: Int,
+        format: ArchiveFormat,
         password: String?
     ) {
         val archiveFile = viewModel.currentPath.resolve(name)
         FileJobService.archive(
-            makePathListForJob(files), archiveFile, format, filter, password, requireContext()
+            makePathListForJob(files), archiveFile, format, password, requireContext()
         )
         viewModel.selectFiles(files, false)
     }

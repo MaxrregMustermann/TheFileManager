@@ -26,6 +26,20 @@
     native <methods>;
 }
 
+# The archive support calls these by name from Rust, so R8 must not rename or remove them. The
+# methods themselves are covered by the rule above, but the class has to survive too, and the ones
+# it takes and returns are part of that.
+-keep class me.zhanghai.android.files.provider.archive.archiver.RustArchive {
+    *;
+}
+-keep class * extends java8.nio.channels.SeekableByteChannel {
+    # Used from Rust, which reaches them by name.
+    read([B)I;
+    write([B)V;
+    position(J)J;
+    size()J;
+}
+
 # App
 -keep class me.zhanghai.android.files.** implements androidx.appcompat.view.CollapsibleActionView { *; }
 -keep class me.zhanghai.android.files.provider.common.ByteString { *; }

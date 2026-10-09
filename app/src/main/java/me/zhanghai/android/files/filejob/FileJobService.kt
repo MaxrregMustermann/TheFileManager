@@ -21,6 +21,7 @@ import me.zhanghai.android.files.util.removeFirst
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
 import me.zhanghai.android.files.compat.removeFirstCompat
+import me.zhanghai.android.files.provider.archive.archiver.ArchiveFormat
 
 class FileJobService : Service() {
     private lateinit var wakeWifiLock: WakeWifiLock
@@ -115,12 +116,11 @@ class FileJobService : Service() {
         fun archive(
             sources: List<Path>,
             archiveFile: Path,
-            format: Int,
-            filter: Int,
+            format: ArchiveFormat,
             password: String?,
             context: Context
         ) {
-            startJob(ArchiveFileJob(sources, archiveFile, format, filter, password), context)
+            startJob(ArchiveFileJob(sources, archiveFile, format, password), context)
         }
 
         fun copy(sources: List<Path>, targetDirectory: Path, context: Context) {

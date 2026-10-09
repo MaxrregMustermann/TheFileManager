@@ -102,7 +102,9 @@ object ArchiveReader {
     }
 
     @Throws(IOException::class)
-    fun newInputStream(file: Path, passwords: List<String>, entry: ReadArchive.Entry): InputStream? {
+    fun newInputStream(
+        file: Path, passwords: List<String>, entry: ReadArchive.Entry
+    ): InputStream? {
         val charset = archiveFileNameCharset
         val (archive, closeable) = openArchive(file, passwords)
         var successful = false
@@ -127,11 +129,18 @@ object ArchiveReader {
         }
     }
 
+    /**
+     * Opens [file], preferring the Rust implementation and falling back to `libarchive`.
+     *
+     * The fallback exists because the Rust library is compiled from source during the build, so it
+     * can be absent from a checkout that has not run the Gradle task, and because `libarchive` covers
+     * a few formats the Rust crates do not.
+     */
     @Throws(IOException::class)
     private fun openArchive(
         file: Path,
         passwords: List<String>
-    ): Pair<ReadArchive, ArchiveCloseable> {
+    ): Pair<ReadableArchive, ArchiveCloseable> {
         val channel = try {
             CacheSizeSeekableByteChannel(file.newByteChannel())
         } catch (e: Exception) {
@@ -141,7 +150,7 @@ object ArchiveReader {
         if (channel != null) {
             var successful = false
             try {
-                val archive = ReadArchive(channel, passwords)
+                val archive = readArchive(channel, passwords)
                 successful = true
                 return archive to ArchiveCloseable(archive, channel)
             } finally {
@@ -153,7 +162,7 @@ object ArchiveReader {
         val inputStream = file.newInputStream()
         var successful = false
         try {
-            val archive = ReadArchive(inputStream, passwords)
+            val archive: ReadableArchive = ReadArchive(inputStream, passwords)
             successful = true
             return archive to ArchiveCloseable(archive, inputStream)
         } finally {
@@ -161,6 +170,22 @@ object ArchiveReader {
                 inputStream.close()
             }
         }
+    }
+
+    /**
+     * Reads [channel] with the Rust crates when they are available, and `libarchive` otherwise.
+     *
+     * Both throw when the file is not an archive of any kind they can read, which is what makes the
+     * fallback safe to try: an archive one of them will not open is often one the other will.
+     */
+    @Throws(Exception::class)
+    private fun readArchive(
+        channel: SeekableByteChannel, passwords: List<String>
+    ): ReadableArchive {
+        if (RustArchive.ensureAvailable()) {
+            return RustReadArchive(channel, passwords)
+        }
+        return ReadArchive(channel, passwords)
     }
 
     // size() may be called repeatedly for ZIP and 7Z, so make it cached to improve performance.
@@ -207,7 +232,7 @@ object ArchiveReader {
             }
 
     private class ArchiveCloseable(
-        private val archive: ReadArchive,
+        private val archive: ReadableArchive,
         private val closeable: Closeable
     ) : Closeable {
         override fun close() {

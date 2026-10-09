@@ -26,7 +26,7 @@ import me.zhanghai.android.files.util.putArgs
 import me.zhanghai.android.files.util.setTextWithSelection
 import me.zhanghai.android.files.util.show
 import me.zhanghai.android.files.util.takeIfNotEmpty
-import me.zhanghai.android.libarchive.Archive
+import me.zhanghai.android.files.provider.archive.archiver.ArchiveFormat
 
 class CreateArchiveDialogFragment : FileNameDialogFragment() {
     private val args by args<Args>()
@@ -87,10 +87,10 @@ class CreateArchiveDialogFragment : FileNameDialogFragment() {
     }
 
     override fun onOk(name: String) {
-        val (format, filter) = when (val checkedId = binding.typeGroup.checkedRadioButtonId) {
-            R.id.zipRadio -> Archive.FORMAT_ZIP to Archive.FILTER_NONE
-            R.id.tarXzRadio -> Archive.FORMAT_TAR to Archive.FILTER_XZ
-            R.id.sevenZRadio -> Archive.FORMAT_7ZIP to Archive.FILTER_NONE
+        val format = when (val checkedId = binding.typeGroup.checkedRadioButtonId) {
+            R.id.zipRadio -> ArchiveFormat.ZIP
+            R.id.tarXzRadio -> ArchiveFormat.TAR_XZ
+            R.id.sevenZRadio -> ArchiveFormat.SEVEN_Z
             else -> throw AssertionError(checkedId)
         }
         val password = if (isPasswordSupported) {
@@ -98,7 +98,7 @@ class CreateArchiveDialogFragment : FileNameDialogFragment() {
         } else {
             null
         }
-        listener.archive(args.files, name, format, filter, password)
+        listener.archive(args.files, name, format, password)
     }
 
     companion object {
@@ -132,6 +132,8 @@ class CreateArchiveDialogFragment : FileNameDialogFragment() {
     }
 
     interface Listener : FileNameDialogFragment.Listener {
-        fun archive(files: FileItemSet, name: String, format: Int, filter: Int, password: String?)
+        fun archive(
+            files: FileItemSet, name: String, format: ArchiveFormat, password: String?
+        )
     }
 }

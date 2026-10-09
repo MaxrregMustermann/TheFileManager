@@ -98,6 +98,7 @@ import me.zhanghai.android.files.util.putArgs
 import me.zhanghai.android.files.util.showToast
 import me.zhanghai.android.files.util.toEnumSet
 import me.zhanghai.android.files.util.withChooser
+import me.zhanghai.android.files.provider.archive.archiver.ArchiveFormat
 
 fun FileJob.getString(@StringRes stringRes: Int): String {
     return service.getString(stringRes)
@@ -613,8 +614,7 @@ private class ActionAllInfo(
 class ArchiveFileJob(
     private val sources: List<Path>,
     private val archiveFile: Path,
-    private val format: Int,
-    private val filter: Int,
+    private val format: ArchiveFormat,
     private val password: String?
 ) : FileJob() {
     @Throws(IOException::class)
@@ -626,7 +626,7 @@ class ArchiveFileJob(
         var successful = false
         try {
             channel.use {
-                ArchiveWriter(channel, format, filter, password).use { writer ->
+                ArchiveWriter(channel, format).use { writer ->
                     val transferInfo = TransferInfo(scanInfo, archiveFile)
                     for (source in sources) {
                         val target = getTargetFileName(source)

@@ -26,7 +26,13 @@ import me.zhanghai.android.libarchive.Archive
 import me.zhanghai.android.libarchive.ArchiveEntry
 import me.zhanghai.android.libarchive.ArchiveException
 
-class ReadArchive : Closeable {
+/**
+ * Reads an archive through `libarchive`.
+ *
+ * Only reached when [RustArchive.ensureAvailable] is false, since the Rust crates cover everything
+ * this does and more.
+ */
+class ReadArchive : ReadableArchive {
     private val archive = Archive.readNew()
 
     @Throws(ArchiveException::class)
@@ -139,7 +145,7 @@ class ReadArchive : Closeable {
         }
 
     @Throws(ArchiveException::class)
-    fun readEntry(charset: Charset): Entry? {
+    override fun readEntry(charset: Charset): Entry? {
         val entry = Archive.readNextHeader(archive)
         if (entry == 0L) {
             return null
@@ -200,7 +206,7 @@ class ReadArchive : Closeable {
         stringUtf8 ?: string?.toString(charset)
 
     @Throws(ArchiveException::class)
-    fun newDataInputStream(): InputStream = DataInputStream()
+    override fun newDataInputStream(): InputStream = DataInputStream()
 
     @Throws(ArchiveException::class)
     override fun close() {
