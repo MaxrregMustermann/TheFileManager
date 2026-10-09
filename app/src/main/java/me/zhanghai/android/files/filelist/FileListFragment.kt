@@ -48,7 +48,6 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
-import com.google.android.material.tabs.TabLayout
 import com.leinardi.android.speeddial.SpeedDialView
 import java8.nio.file.Path
 import java8.nio.file.Paths
@@ -75,6 +74,7 @@ import me.zhanghai.android.files.file.isImage
 import me.zhanghai.android.files.filejob.FileJobService
 import me.zhanghai.android.files.filelist.FileSortOptions.By
 import me.zhanghai.android.files.filelist.FileSortOptions.Order
+import me.zhanghai.android.files.apk.SplitApkContainer
 import me.zhanghai.android.files.fileproperties.FilePropertiesDialogFragment
 import me.zhanghai.android.files.navigation.BookmarkDirectories
 import me.zhanghai.android.files.navigation.BookmarkDirectory
@@ -250,7 +250,6 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
         binding.recyclerView.setOnApplyWindowInsetsListener(
             ScrollingViewOnApplyWindowInsetsListener(binding.recyclerView, fastScroller)
         )
-        setUpTabs()
         binding.speedDialView.inflate(R.menu.file_list_speed_dial)
         binding.speedDialView.setOnActionSelectedListener {
             when (it.id) {
@@ -350,7 +349,10 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
         viewModel.breadcrumbLiveData.observe(viewLifecycleOwner) {
             binding.breadcrumbLayout.setData(it)
         }
-        viewModel.fileListModeLiveData.observe(viewLifecycleOwner) { onFileListModeChanged(it) }
+        viewModel.fileListModeLiveData.observe(viewLifecycleOwner) {
+            updateBreadcrumbLayoutVisibility()
+            updateViewSortMenuItems()
+        }
         viewModel.viewTypeLiveData.observe(viewLifecycleOwner) { onViewTypeChanged(it) }
         // Live data only calls observeForever() on its sources when it is active, so we have to
         // make view type live data active first (so that it can load its initial value) before we
@@ -586,54 +588,19 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
         updateBottomToolbar()
     }
 
-    private fun setUpTabs() {
-        binding.tabLayout.apply {
-            addTab(newTab().setText(R.string.file_list_tab_directory), false)
-            addTab(newTab().setText(R.string.file_list_tab_recent), false)
-            addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
-                override fun onTabSelected(tab: TabLayout.Tab) {
-                    viewModel.setFileListMode(
-                        if (tab.position == RECENT_TAB_POSITION) FileListMode.RECENT
-                        else FileListMode.DIRECTORY
-                    )
-                }
-
-                override fun onTabUnselected(tab: TabLayout.Tab) {}
-
-                override fun onTabReselected(tab: TabLayout.Tab) {}
-            })
-        }
-        updateTabLayoutVisibility()
-    }
-
-    private fun onFileListModeChanged(fileListMode: FileListMode) {
-        val position =
-            if (fileListMode == FileListMode.RECENT) RECENT_TAB_POSITION else DIRECTORY_TAB_POSITION
-        val tab = binding.tabLayout.getTabAt(position)
-        if (tab != null && !tab.isSelected) {
-            tab.select()
-        }
-        updateTabLayoutVisibility()
-        updateViewSortMenuItems()
-    }
-
     /**
-     * The tabs are hidden while picking a file, where the caller wants exactly one list, and while
-     * searching, because search is always relative to the current directory.
+     * Recent files come from everywhere rather than from one place, so the path they would sit
+     * under is meaningless and the breadcrumb is hidden while they are showing.
      */
-    private fun updateTabLayoutVisibility() {
-        val isVisible = viewModel.pickOptions == null && !viewModel.searchState.isSearching &&
-            !viewModel.isSearchViewExpanded
-        binding.tabLayout.fadeToVisibilityUnsafe(isVisible)
-        // Recent files are from everywhere, so the path they would be relative to is meaningless.
+    private fun updateBreadcrumbLayoutVisibility() {
         binding.breadcrumbLayout.fadeToVisibilityUnsafe(
-            viewModel.fileListMode != FileListMode.RECENT
+            viewModel.fileListMode != FileListMode.RECENT && !viewModel.searchState.isSearching
         )
     }
 
     private fun onSearchViewExpandedChanged(expanded: Boolean) {
         updateViewSortMenuItems()
-        updateTabLayoutVisibility()
+        updateBreadcrumbLayoutVisibility()
     }
 
     private fun onFileListChanged(stateful: Stateful<List<FileItem>>) {
@@ -822,8 +789,19 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
 
     override fun navigateTo(path: Path) {
         collapseSearchView()
+        // Navigating somewhere makes the recent list stop being what is showing, since the two are
+        // alternatives rather than a parent and a child.
+        viewModel.setFileListMode(FileListMode.DIRECTORY)
         val state = layoutManager.onSaveInstanceState()
         viewModel.navigateTo(state!!, path)
+    }
+
+    override val isShowingRecentFiles: Boolean
+        get() = viewModel.fileListMode == FileListMode.RECENT
+
+    override fun showRecentFiles() {
+        collapseSearchView()
+        viewModel.setFileListMode(FileListMode.RECENT)
     }
 
     override fun copyPath(path: Path) {
@@ -850,7 +828,7 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
             }
         }
         requireActivity().title = title
-        updateTabLayoutVisibility()
+        updateBreadcrumbLayoutVisibility()
         updateSelectAllMenuItem()
         updateOverlayToolbar()
         updateBottomToolbar()
@@ -952,9 +930,13 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
             val isCurrentPathReadOnly = viewModel.currentPath.fileSystem.isReadOnly
             menu.findItem(R.id.action_archive).isVisible = !isCurrentPathReadOnly
             // Split APKs only merge into something installable once every one of them is selected,
-            // which the user may have to do by hand.
+            // which the user may have to do by hand. The check is by extension rather than by MIME
+            // type because the bundle containers are not recognised as APKs by anything, and a
+            // single `.apks` is a whole split set on its own.
             menu.findItem(R.id.action_merge_splits).isVisible = !isCurrentPathReadOnly &&
-                files.isNotEmpty() && files.all { it.mimeType == MimeType.APK }
+                files.isNotEmpty() && files.all {
+                    SplitApkContainer.isMergeable(it.extension)
+                }
         }
         if (!overlayActionMode.isActive) {
             binding.appBarLayout.setExpanded(true)
@@ -1692,8 +1674,6 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
         private const val ACTION_VIEW_DOWNLOADS =
             "me.zhanghai.android.files.intent.action.VIEW_DOWNLOADS"
 
-        private const val DIRECTORY_TAB_POSITION = 0
-        private const val RECENT_TAB_POSITION = 1
 
         private const val IMAGE_VIEWER_ACTIVITY_PATH_LIST_SIZE_MAX = 1000
     }
@@ -1733,7 +1713,6 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
         val toolbar: Toolbar,
         val overlayToolbar: Toolbar,
         val breadcrumbLayout: BreadcrumbLayout,
-        val tabLayout: TabLayout,
         val contentLayout: ViewGroup,
         val progress: ProgressBar,
         val errorText: TextView,
@@ -1762,7 +1741,7 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
                     bindingRoot, includeBinding.drawerLayout, includeBinding.persistentDrawerLayout,
                     includeBinding.persistentBarLayout, appBarBinding.appBarLayout,
                     appBarBinding.toolbar, appBarBinding.overlayToolbar,
-                    appBarBinding.breadcrumbLayout, appBarBinding.tabLayout,
+                    appBarBinding.breadcrumbLayout,
                     contentBinding.contentLayout,
                     contentBinding.progress, contentBinding.errorText, contentBinding.emptyView,
                     contentBinding.swipeRefreshLayout, contentBinding.recyclerView,

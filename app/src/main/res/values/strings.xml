@@ -120,6 +120,9 @@
         <item quantity="other">Preparing to delete %1$,d files</item>
     </plurals>
     <string name="file_job_merge_splits_notification_title">Merging split APKs</string>
+    <string name="file_job_merge_splits_notification_merging">Merging the splits…</string>
+    <string name="file_job_merge_splits_notification_signing">Signing the merged APK…</string>
+    <string name="file_job_merge_splits_notification_protected">This app is Play Store protected, so it cannot be signed and the merged APK may not install.</string>
     <string name="file_job_delete_notification_title_one_format">Deleting “%1$s”</string>
     <plurals name="file_job_delete_notification_title_multiple_format">
         <item quantity="one">Deleting %1$,d file</item>
@@ -320,8 +323,6 @@
     <string name="file_list_paste_action_extract_here">Extract here</string>
     <string name="file_list_empty">No files</string>
     <string name="file_list_recent_empty">No recent files yet</string>
-    <string name="file_list_tab_directory">Files</string>
-    <string name="file_list_tab_recent">Recent</string>
     <string name="file_list_action_create_file">File</string>
     <string name="file_list_action_create_directory">Folder</string>
 
@@ -680,6 +681,7 @@
     <string name="storage_edit_webdav_server_connect_and_add">Connect and add</string>
     <string name="storage_edit_webdav_server_add">Add</string>
 
+    <string name="navigation_recent_files">Recent files</string>
     <string name="navigation_storage_subtitle_format">%1$s free of %2$s</string>
     <string name="navigation_add_storage">Add storage…</string>
     <string name="navigation_standard_directory_alarms">Alarms</string>

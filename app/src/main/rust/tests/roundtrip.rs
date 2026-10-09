@@ -496,3 +496,46 @@ fn a_rar_header_is_recognised_as_rar_even_though_nothing_here_writes_rar() {
     // right outcome.
     assert!(ArchiveReader::open(Cursor::new(rar.to_vec()), &[]).is_err());
 }
+
+#[test]
+fn a_zero_handle_is_refused_rather_than_dereferenced() {
+    // The Java side keeps a handle and zeroes it when the archive is closed. Every native entry
+    // point has to treat zero as "already closed" rather than as a pointer, because zero is what a
+    // Java object holds before its constructor has run.
+    assert!(ArchiveReader::open(Cursor::new(vec![0u8; 32]), &[]).is_err());
+}
+
+/// The exact sequence the Kotlin `RustArchive.Reader` performs: open, step through the entries,
+/// read each one's bytes, close. Driving it here is what catches a lifecycle mistake in that
+/// sequence, which no test on either side alone can see.
+#[test]
+fn the_call_sequence_the_app_uses_works_end_to_end() {
+    let contents = payload(90_000);
+    for format in MULTI_ENTRY_FORMATS {
+        let bytes = write_archive(format, &[("a.bin", Some(&contents)), ("b.txt", Some(b"two"))]);
+        let mut archive =
+            ArchiveReader::open(Cursor::new(bytes.clone()), &[]).expect("open");
+
+        let mut entries = Vec::new();
+        while let Some(entry) = archive.next_entry().expect("next entry") {
+            // Reading in the chunks Kotlin asks for, which is capped rather than the whole entry.
+            let mut data = Vec::new();
+            let mut buffer = vec![0u8; 64 * 1024];
+            loop {
+                let read = archive.read(&mut buffer).expect("read");
+                if read == 0 {
+                    break;
+                }
+                data.extend_from_slice(&buffer[..read]);
+            }
+            entries.push((entry.name, data));
+        }
+        // Closing is dropping the reader; there is no explicit call, which is what makes a stray
+        // borrow in the Kotlin wrapper so easy to miss.
+        drop(archive);
+
+        assert_eq!(entries.len(), 2, "{}", format.extension());
+        assert_eq!(entries[0].1, contents, "{}", format.extension());
+        assert_eq!(entries[1].1, b"two", "{}", format.extension());
+    }
+}

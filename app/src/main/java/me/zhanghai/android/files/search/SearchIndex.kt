@@ -21,7 +21,10 @@ object SearchIndex {
     const val DEFAULT_SEARCH_LIMIT = 1000
 
     @Volatile
-    private var fileIndexDao: FileIndexDao? = null
+    private var searchIndexDatabase: SearchIndexDatabase? = null
+
+    private val fileIndexDao: FileIndexDao?
+        get() = searchIndexDatabase?.fileIndexDao()
 
     private val coverage = IndexCoverage()
 
@@ -30,25 +33,41 @@ object SearchIndex {
      * fall back to walking the file system.
      */
     fun initialize(context: Context) {
-        if (fileIndexDao != null) {
+        if (searchIndexDatabase != null) {
             return
         }
         synchronized(this) {
-            if (fileIndexDao == null) {
-                fileIndexDao = SearchIndexDatabase.create(context).fileIndexDao()
+            if (searchIndexDatabase == null) {
+                searchIndexDatabase = SearchIndexDatabase.create(context)
                 coverage.clear()
             }
         }
     }
 
+    /**
+     * Whether the index can answer a query, creating the FTS table if it is missing.
+     *
+     * The table is created by a Room callback that only runs when the database file is first created,
+     * so a file left behind by an earlier version of the app opens without it, and every query
+     * against it fails. `SearchIndex` swallows those failures, which is why the symptom was a search
+     * that silently found nothing rather than an error. Repairing here means the check happens once
+     * per process, on the first query that needs it.
+     */
     val isInitialized: Boolean
-        get() = fileIndexDao != null
+        get() {
+            val database = searchIndexDatabase ?: return false
+            database.ensureFtsIndex()
+            return true
+        }
 
     /**
      * The indexed descendants of [root] whose name or path contains [query], ignoring case, newest
      * first.
      */
     fun search(root: Path, query: String, limit: Int = DEFAULT_SEARCH_LIMIT): List<Path> {
+        if (!isInitialized) {
+            return emptyList()
+        }
         val fileIndexDao = fileIndexDao ?: return emptyList()
         if (query.isEmpty() || limit <= 0) {
             return emptyList()
@@ -71,6 +90,9 @@ object SearchIndex {
 
     /** The most recently modified indexed files, newest first. */
     fun searchRecent(limit: Int = DEFAULT_SEARCH_LIMIT): List<Path> {
+        if (!isInitialized) {
+            return emptyList()
+        }
         val fileIndexDao = fileIndexDao ?: return emptyList()
         if (limit <= 0) {
             return emptyList()

@@ -8,6 +8,7 @@ package me.zhanghai.android.files.search
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -270,5 +271,85 @@ class SearchIndexTest {
         // A stale FTS index would make this report a mismatch instead of passing.
         database.query("INSERT INTO ${SearchIndexSchema.FTS_TABLE}(${SearchIndexSchema.FTS_TABLE}) " +
             "VALUES('integrity-check')", emptyList()) { }
+    }
+
+    /**
+     * The searches from the bug report, against the file names the report used. Every one of these
+     * used to come back empty on a device, which is why they are here by name rather than only in
+     * the general substring test above.
+     */
+    @Test
+    fun findsFilesByExtension() {
+        database.insert(
+            listOf(
+                entity("$root/Download/app.apk", "app.apk"),
+                entity("$root/Download/notes.txt", "notes.txt"),
+            )
+        )
+        assertEquals(listOf("app.apk"), search("apk"))
+    }
+
+    @Test
+    fun findsASplitApkByAnyPartOfItsLongName() {
+        // The name the report gave, kept whole, because a matcher that works on a short name can
+        // still fail on a name with punctuation and underscores in it.
+        val name = "pl.solidexplorer2_2.8.62-200307_4arch_916c712fc4110c0e14471d716c42d1f7" +
+            "_apkmirror.com_antisplit.zip"
+        database.insert(listOf(entity("$root/Download/$name", name)))
+        assertEquals(listOf(name), search("antisplit"))
+        assertEquals(listOf(name), search("solid"))
+        assertEquals(listOf(name), search("split"))
+        assertEquals(listOf(name), search("apkmirror"))
+        assertEquals(listOf(name), search("916c712fc"))
+        assertEquals(listOf(name), search(".zip"))
+    }
+
+    @Test
+    fun findsShortQueriesThroughTheLikeFallbackToo() {
+        database.insert(
+            listOf(
+                entity("$root/a.apk", "a.apk"),
+                entity("$root/b.txt", "b.txt"),
+            )
+        )
+        // Two characters is below the trigram tokenizer's minimum, so this goes through LIKE.
+        assertEquals(listOf("a.apk"), search("ap"))
+    }
+
+    /**
+     * A database opened without the FTS table has to be repaired, or every search fails and the
+     * failure is swallowed, which looks like a search that simply finds nothing.
+     */
+    @Test
+    fun repairsADatabaseThatOpenedWithoutTheFtsTable() {
+        val withoutFts = TestDatabase.createWithoutFtsIndex()
+        try {
+            withoutFts.insert(listOf(entity("$root/a.apk", "a.apk")))
+            // What the app used to do: search, have it fail, swallow the failure, return nothing.
+            assertThrows(Exception::class.java) { withoutFts.search("\"apk\"", "%", 100) }
+            assertTrue(withoutFts.searchRecent(100).isNotEmpty())
+
+            // The repair rebuilds the index from the rows that are already there, so the file the
+            // user can see becomes searchable without waiting for a reindex.
+            TestDatabase.ensureFtsIndex(withoutFts)
+            assertEquals(
+                listOf("a.apk"),
+                withoutFts.search("\"apk\"", "%", 100)
+                    .map { it[SearchIndexSchema.COLUMN_NAME] }
+            )
+            // And the index agrees with the table again, which is what makes deleting a file work.
+            // Without the rebuild the delete trigger fails with "database disk image is malformed",
+            // because the index never had the row the trigger is trying to remove.
+            withoutFts.clear()
+            assertEquals(0, withoutFts.count())
+            withoutFts.insert(listOf(entity("$root/b.apk", "b.apk")))
+            assertEquals(
+                listOf("b.apk"),
+                withoutFts.search("\"apk\"", "%", 100)
+                    .map { it[SearchIndexSchema.COLUMN_NAME] }
+            )
+        } finally {
+            withoutFts.close()
+        }
     }
 }

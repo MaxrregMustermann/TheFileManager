@@ -72,9 +72,18 @@ object SearchIndexer {
         var budget = maxEntries
         val queue = ArrayDeque<Path>()
         queue.addLast(root)
+        // A directory that cannot be read is not the same as a directory that turned out to be
+        // empty. Claiming the whole subtree as indexed after skipping one is what makes a search
+        // below it return nothing: it would stop walking the file system and answer from an index
+        // that never saw the files behind that directory.
+        var isComplete = true
         while (queue.isNotEmpty() && budget > 0) {
             val directory = queue.removeFirst()
-            val entities = readDirectory(directory, directory.toIndexUri()) ?: continue
+            val entities = readDirectory(directory, directory.toIndexUri())
+            if (entities == null) {
+                isComplete = false
+                continue
+            }
             SearchIndex.upsert(entities)
             budget -= entities.size
             for (entity in entities) {
@@ -83,7 +92,8 @@ object SearchIndexer {
                 }
             }
         }
-        val isComplete = queue.isEmpty()
+        // Running out of budget leaves the queue non-empty, which is also an incomplete scan.
+        isComplete = isComplete && queue.isEmpty()
         if (isComplete) {
             SearchIndex.markCovered(root)
         }

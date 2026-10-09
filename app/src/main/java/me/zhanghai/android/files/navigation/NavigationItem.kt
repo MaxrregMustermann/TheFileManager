@@ -36,5 +36,16 @@ abstract class NavigationItem {
         fun navigateToRoot(path: Path)
         fun launchIntent(intent: Intent)
         fun closeNavigationDrawer()
+
+        /** Whether the list of recently modified files is what is being shown. */
+        val isShowingRecentFiles: Boolean
+
+        /**
+         * Shows the list of recently modified files instead of the current directory.
+         *
+         * Recent files are from everywhere rather than from one place, so they have no path to
+         * navigate to and cannot be a navigation item in the usual sense.
+         */
+        fun showRecentFiles()
     }
 }

@@ -81,6 +81,52 @@ object ApkMerger {
         }
     }
 
+    /**
+     * Copies or unpacks [inputs] into a staging directory beside [outputFile], and returns the split
+     * APKs that ended up there.
+     *
+     * An input is either a loose split or a container that several splits are packed into, which is
+     * how they are usually downloaded. The staging directory is deliberately not removed here: the
+     * caller needs the extracted splits afterwards, to check them for Play Store protection and to
+     * hand to the merger.
+     */
+    @Throws(IOException::class)
+    fun stage(
+        inputs: List<File>,
+        outputFile: File,
+        log: (String) -> Unit = {}
+    ): List<File> {
+        if (inputs.isEmpty()) {
+            throw IOException("No APK to merge")
+        }
+        return stageInto(inputs, createStagingDirectory(outputFile), log)
+    }
+
+    private fun stageInto(inputs: List<File>, staging: File, log: (String) -> Unit): List<File> {
+        val splits = mutableListOf<File>()
+        for (input in inputs) {
+            val extension = input.extension.lowercase()
+            if (extension in SplitApkContainer.CONTAINER_EXTENSIONS) {
+                // A container is one file holding every split, so it is unpacked rather than copied.
+                log("Extracting ${input.name}")
+                val extracted = SplitExtractor.extract(input, staging, LoggingApkLogger(log))
+                if (extracted.isEmpty()) {
+                    throw IOException("${input.name} has no APK in it")
+                }
+                splits.addAll(extracted.map { File(staging, it) })
+            } else {
+                log("Staging ${input.name}")
+                val staged = File(staging, input.name)
+                input.copyTo(staged, overwrite = true)
+                splits.add(staged)
+            }
+        }
+        if (splits.isEmpty()) {
+            throw IOException("No APK to merge")
+        }
+        return splits
+    }
+
     private fun createStagingDirectory(outputFile: File): File {
         val parent = outputFile.parentFile ?: File(".")
         parent.mkdirs()

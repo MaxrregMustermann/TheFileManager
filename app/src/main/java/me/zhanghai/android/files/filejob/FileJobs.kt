@@ -37,6 +37,9 @@ import kotlinx.coroutines.runBlocking
 import me.zhanghai.android.files.R
 import me.zhanghai.android.files.apk.ApkMerger
 import me.zhanghai.android.files.apk.ApkSigner
+import me.zhanghai.android.files.apk.OutputNames
+import me.zhanghai.android.files.apk.PairIpProtection
+import me.zhanghai.android.files.apk.SplitApkContainer
 import me.zhanghai.android.files.app.BackgroundActivityStarter
 import me.zhanghai.android.files.app.mainExecutor
 import me.zhanghai.android.files.compat.mainExecutorCompat
@@ -1478,33 +1481,63 @@ class InstallApkJob(private val file: Path) : FileJob() {
  * The splits can come from several directories, or from inside a bundle, so they are staged into
  * one working directory first, and the merged APK is written next to them.
  */
+/**
+ * Turns split APKs into one installable APK.
+ *
+ * The selection can be the loose splits themselves or the container they were downloaded in, which
+ * is how they are usually obtained. Either way the result is one signed APK named after whatever
+ * was selected.
+ */
 class MergeSplitApksJob(private val splits: List<Path>) : FileJob() {
     override fun run() {
         val targetDirectory =
             splits.first().parent ?: throw IOException("Cannot find the target directory")
-        // The splits can come from anywhere, and ARSCLib reads a whole directory at a time, so they
-        // are staged into one working directory before being merged.
+        // ARSCLib reads a whole directory at a time, and the splits can come from anywhere, so
+        // everything is staged into one working directory before being merged.
         val workingDirectory = Files.createTempDirectory(targetDirectory, "merge-split-apks-")
         try {
-            val stagedSplits = splits.mapIndexed { index, split ->
-                val name = split.fileName?.toString() ?: "split-$index.apk"
-                val staged = workingDirectory.resolve(name)
-                postProgress(name)
-                Files.copy(split, staged, StandardCopyOption.REPLACE_EXISTING)
-                staged.toFile()
+            val inputs = splits.map { it.toFile() }
+            val name = outputName(inputs)
+            val unsigned = workingDirectory.resolve(name)
+            // The staged splits are the ones the merger extracted, so the protection check looks at
+            // what is actually about to be merged rather than at the container it came out of.
+            val staged = ApkMerger.stage(inputs, unsigned.toFile()) { postProgress(it) }
+            postProgress(getString(R.string.file_job_merge_splits_notification_merging))
+            ApkMerger.merge(staged, unsigned.toFile()) { postProgress(it) }
+            // A Play Store protected app cannot be signed with a key this app owns, so signing it
+            // would produce an APK that installs nowhere. Merging it unsigned at least leaves the
+            // user something they can inspect, with the reason attached.
+            val isProtected = PairIpProtection.isProtected(staged) { postProgress(it) }
+            val signed = workingDirectory.resolve(OutputNames.merged(name))
+            if (isProtected) {
+                postProgress(getString(R.string.file_job_merge_splits_notification_protected))
+                Files.copy(unsigned, signed, StandardCopyOption.REPLACE_EXISTING)
+            } else {
+                postProgress(getString(R.string.file_job_merge_splits_notification_signing))
+                ApkSigner.sign(unsigned.toFile(), signed.toFile(), MINIMUM_SDK_VERSION)
             }
-            val name = splits.first().fileName.toString().removeSuffix(".apk")
-            val unsigned = workingDirectory.resolve("$name-unsigned.apk")
-            ApkMerger.merge(stagedSplits, unsigned.toFile()) { postProgress(it) }
-            val merged = workingDirectory.resolve("$name-merged.apk")
-            ApkSigner.sign(unsigned.toFile(), merged.toFile(), MINIMUM_SDK_VERSION)
-            val mergedFileName = merged.fileName
+            val mergedFileName = signed.fileName
             Files.copy(
-                merged, targetDirectory.resolve(mergedFileName), StandardCopyOption.REPLACE_EXISTING
+                signed, targetDirectory.resolve(mergedFileName), StandardCopyOption.REPLACE_EXISTING
             )
             service.showToast("${targetDirectory.fileName}/$mergedFileName")
         } finally {
             workingDirectory.toFile().deleteRecursively()
+        }
+    }
+
+    /**
+     * The merged APK is named after whatever was selected: a container keeps its name, and a loose
+     * split keeps the base module's.
+     */
+    private fun outputName(inputs: List<File>): String {
+        val name = inputs.first().name
+        return if (SplitApkContainer.isContainer(name.substringAfterLast('.', ""))) {
+            OutputNames.merged(name)
+        } else {
+            // A loose split is already .apk; merging it would otherwise produce a name that looks
+            // like a container's.
+            OutputNames.mergedFromApk(name)
         }
     }
 

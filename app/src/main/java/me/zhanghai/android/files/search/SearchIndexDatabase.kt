@@ -18,7 +18,7 @@ abstract class SearchIndexDatabase : RoomDatabase() {
 
     /**
      * Room cannot declare FTS5 tables, so the index and the triggers that keep it in step with
-     * [SearchIndexSchema.TABLE] are created right after Room creates its own tables.
+     * [SearchIndexSchema.TABLE] are created separately from Room's own tables.
      */
     object Callback : RoomDatabase.Callback() {
         override fun onCreate(db: SupportSQLiteDatabase) {
@@ -27,6 +27,36 @@ abstract class SearchIndexDatabase : RoomDatabase() {
             }
         }
     }
+
+    /**
+     * Creates the FTS table and its triggers if they are not there already, and makes the index match
+     * the rows that are already in [SearchIndexSchema.TABLE].
+     *
+     * The rebuild is not optional. A database whose rows predate the triggers has an index that does
+     * not know about them, and FTS5 treats that as corruption: deleting such a row fails with
+     * "database disk image is malformed", because the delete trigger cannot find the row it is meant
+     * to remove. Rebuilding is what FTS5 provides for exactly this, and it is what keeps deletes
+     * working.
+     */
+    fun ensureFtsIndex() {
+        try {
+            val database = openHelper.writableDatabase
+            if (hasFtsTable(database)) {
+                return
+            }
+            for (statement in SearchIndexSchema.CREATE_FTS_STATEMENTS) {
+                database.execSQL(statement)
+            }
+            database.execSQL(SearchIndexSchema.REBUILD_FTS_INDEX)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun hasFtsTable(database: SupportSQLiteDatabase): Boolean =
+        database.query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+            arrayOf(SearchIndexSchema.FTS_TABLE)
+        ).use { it.moveToFirst() }
 
     companion object {
         const val NAME = "search-index.db"

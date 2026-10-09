@@ -118,7 +118,7 @@ internal object RustArchive {
         channel: SeekableByteChannel,
         passwords: List<String>
     ) : Closeable {
-        private var handle: Long = 0
+        private var handle: Long = nativeOpen(channel, passwords.toTypedArray())
 
         private var isClosed = false
 

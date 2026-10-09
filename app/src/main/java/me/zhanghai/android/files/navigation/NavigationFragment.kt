@@ -72,16 +72,25 @@ class NavigationFragment : Fragment(), NavigationItem.Listener {
         startActivitySafe(intent)
     }
 
+    override fun showRecentFiles() {
+        listener.showRecentFiles()
+    }
+
+    override val isShowingRecentFiles: Boolean
+        get() = listener.isShowingRecentFiles
+
     override fun closeNavigationDrawer() {
         listener.closeNavigationDrawer()
     }
 
     interface Listener {
         val currentPath: Path
+        val isShowingRecentFiles: Boolean
         fun navigateTo(path: Path)
         fun navigateToRoot(path: Path)
         fun navigateToDefaultRoot()
         fun observeCurrentPath(owner: LifecycleOwner, observer: (Path) -> Unit)
         fun closeNavigationDrawer()
+        fun showRecentFiles()
     }
 }

@@ -93,6 +93,10 @@ class TestDatabase private constructor(private val connection: SQLiteConnection)
             rows.map { it[SearchIndexSchema.COLUMN_URI] }
         }
 
+    fun clear() {
+        query(SearchIndexSchema.CLEAR, ENTITY_COLUMNS) { }
+    }
+
     fun deleteSubtree(uriPattern: String): Int =
         query(SearchIndexSchema.DELETE_SUBTREE, ENTITY_COLUMNS, uriPattern) { it.size }
 
@@ -100,6 +104,12 @@ class TestDatabase private constructor(private val connection: SQLiteConnection)
         query(SearchIndexSchema.COUNT, listOf(SearchIndexSchema.COUNT_COLUMN)) {
             it.single().getLong(SearchIndexSchema.COUNT_COLUMN).toInt()
         }
+
+    fun hasFtsTable(): Boolean =
+        query(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+            listOf("present"), SearchIndexSchema.FTS_TABLE
+        ) { it.isNotEmpty() }
 
     override fun close() {
         connection.close()
@@ -135,6 +145,32 @@ class TestDatabase private constructor(private val connection: SQLiteConnection)
         val ENTITY_COLUMNS = SearchIndexSchema.SELECT_COLUMNS.split(", ")
 
         private val URI_COLUMNS = listOf(SearchIndexSchema.COLUMN_URI)
+
+        /**
+         * Creates the table and indices but not the FTS table or its triggers.
+         *
+         * Models a database file left behind by a version of the app whose schema did not have the
+         * FTS table, which is what `ensureFtsIndex` exists to repair. A search against it has to
+         * fail loudly rather than quietly return nothing, which is the bug this reproduces.
+         */
+        fun createWithoutFtsIndex(): TestDatabase {
+            val connection = BundledSQLiteDriver().open(":memory:")
+            for (statement in CREATE_TABLE_STATEMENTS) {
+                connection.prepare(statement).use { it.step() }
+            }
+            return TestDatabase(connection)
+        }
+
+        /** What the app runs to repair a database whose FTS table is missing or out of step. */
+        fun ensureFtsIndex(database: TestDatabase) {
+            if (database.hasFtsTable()) {
+                return
+            }
+            for (statement in SearchIndexSchema.CREATE_FTS_STATEMENTS) {
+                database.connection.prepare(statement).use { it.step() }
+            }
+            database.connection.prepare(SearchIndexSchema.REBUILD_FTS_INDEX).use { it.step() }
+        }
 
         fun create(): TestDatabase {
             val connection = BundledSQLiteDriver().open(":memory:")

@@ -21,7 +21,6 @@ package me.zhanghai.android.files.search
  */
 object SearchIndexSchema {
     const val TABLE = "file_index"
-    const val FTS_TABLE = "file_index_fts"
     const val COLUMN_ID = "id"
     const val COLUMN_URI = "uri"
     const val COLUMN_PARENT_URI = "parent_uri"
@@ -52,6 +51,8 @@ object SearchIndexSchema {
      * SQLite accepts: `case_sensitive` and `remove_diacritics` are the only two.
      */
     const val TOKENIZER = "trigram remove_diacritics 0"
+
+    const val FTS_TABLE = "file_index_fts"
 
     /** An external content table, so the index does not keep a second copy of every file name. */
     const val CREATE_FTS_TABLE =
@@ -84,6 +85,17 @@ object SearchIndexSchema {
         CREATE_FTS_TABLE, CREATE_FTS_INSERT_TRIGGER, CREATE_FTS_DELETE_TRIGGER,
         CREATE_FTS_UPDATE_TRIGGER
     )
+
+    /**
+     * Repopulates the FTS index from the table it is an index of.
+     *
+     * FTS5 provides this for exactly the case where the index and its content table disagree, which
+     * is what happens when the table is created over a content table that already has rows. Without
+     * it every later delete fails with "database disk image is malformed", because the delete
+     * trigger's `delete` command looks for a row the index never had.
+     */
+    const val REBUILD_FTS_INDEX =
+        "INSERT INTO $FTS_TABLE($FTS_TABLE) VALUES('rebuild')"
 
     /** The number of bound arguments one row of an upsert takes. The id is left to SQLite. */
     const val UPSERT_ARGUMENT_COUNT = 8

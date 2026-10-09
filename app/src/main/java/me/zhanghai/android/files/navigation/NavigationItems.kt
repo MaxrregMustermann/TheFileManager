@@ -39,6 +39,7 @@ import me.zhanghai.android.files.util.valueCompat
 val navigationItems: List<NavigationItem?>
     get() =
         mutableListOf<NavigationItem?>().apply {
+            add(RecentFilesItem())
             addAll(storageItems)
             if (Environment::class.supportsExternalStorageManager()) {
                 // Starting with R, we can get read/write access to non-primary storage volumes with
@@ -61,6 +62,34 @@ val navigationItems: List<NavigationItem?>
             add(null)
             addAll(menuItems)
         }
+
+/**
+ * The most recently modified files, which is a list rather than a location.
+ *
+ * It sits at the top of the drawer because it is the one destination that is not a place on disk,
+ * and putting it first keeps it from looking like another storage volume.
+ */
+class RecentFilesItem : NavigationItem() {
+    override val id: Long = ID
+
+    @DrawableRes
+    override val iconRes: Int = R.drawable.history_icon_white_24dp
+
+    override fun getTitle(context: Context): String =
+        context.getString(R.string.navigation_recent_files)
+
+    override fun isChecked(listener: Listener): Boolean = listener.isShowingRecentFiles
+
+    override fun onClick(listener: Listener) {
+        listener.showRecentFiles()
+        listener.closeNavigationDrawer()
+    }
+
+    companion object {
+        /** Unique among the drawer's items, which the rest identify by their resource id. */
+        const val ID = -1L
+    }
+}
 
 private val storageItems: List<NavigationItem>
     @Size(min = 0)

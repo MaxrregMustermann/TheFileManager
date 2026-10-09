@@ -53,13 +53,5 @@
             android:layout_height="wrap_content"
             android:paddingStart="@dimen/content_start_margin_minus_12dp"
             android:paddingEnd="@dimen/screen_edge_margin_minus_12dp" />
-
-        <com.google.android.material.tabs.TabLayout
-            android:id="@+id/tabLayout"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:visibility="gone"
-            app:tabGravity="fill"
-            app:tabMode="fixed" />
     </me.zhanghai.android.files.ui.CoordinatorAppBarLayout>
 </merge>
