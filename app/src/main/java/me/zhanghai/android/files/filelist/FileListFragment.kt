@@ -789,9 +789,7 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
 
     override fun navigateTo(path: Path) {
         collapseSearchView()
-        // Navigating somewhere makes the recent list stop being what is showing, since the two are
-        // alternatives rather than a parent and a child.
-        viewModel.setFileListMode(FileListMode.DIRECTORY)
+        showDirectoryOrRecentFiles()
         val state = layoutManager.onSaveInstanceState()
         viewModel.navigateTo(state!!, path)
     }
@@ -802,6 +800,9 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
     override fun showRecentFiles() {
         collapseSearchView()
         viewModel.setFileListMode(FileListMode.RECENT)
+        // The path has not changed, so nothing else would tell the drawer that the item it marked
+        // as selected is no longer the one being shown.
+        navigationFragment.refreshCheckedItems()
     }
 
     override fun copyPath(path: Path) {
@@ -1397,6 +1398,10 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
         copyFile(file.createDummyArchiveRoot())
     }
 
+    override fun mergeSplitApks(file: FileItem) {
+        mergeSplitApks(listOf(file.path))
+    }
+
     override fun showCreateArchiveDialog(file: FileItem) {
         showCreateArchiveDialog(fileItemSetOf(file))
     }
@@ -1497,7 +1502,21 @@ class FileListFragment : Fragment(), BreadcrumbLayout.Listener, FileListAdapter.
 
     override fun navigateToRoot(path: Path) {
         collapseSearchView()
+        // Recent files are an alternative to the directory list rather than a place inside it, so
+        // picking a storage medium has to leave them, exactly as picking a folder does.
+        showDirectoryOrRecentFiles()
         viewModel.resetTo(path)
+    }
+
+    /**
+     * Returns to the directory list from the recent list.
+     *
+     * Also refreshes the navigation drawer, which marks the current location as selected and so has
+     * to be told when the selection changed somewhere else.
+     */
+    private fun showDirectoryOrRecentFiles() {
+        viewModel.setFileListMode(FileListMode.DIRECTORY)
+        navigationFragment.refreshCheckedItems()
     }
 
     override fun navigateToDefaultRoot() {

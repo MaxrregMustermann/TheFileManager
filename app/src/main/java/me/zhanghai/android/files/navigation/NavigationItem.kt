@@ -12,6 +12,18 @@ import androidx.annotation.DrawableRes
 import java8.nio.file.Path
 import me.zhanghai.android.files.compat.getDrawableCompat
 
+/**
+ * Whether a drawer item that stands for a path is the one marked as selected.
+ *
+ * The recent list is an alternative to the directory list rather than a place inside it, so while it
+ * is showing no path may be marked, and the recent item is. Without that, the item for the path the
+ * user was last in stays marked and the drawer shows two selections at once.
+ *
+ * [isCurrentPath] is the caller's own comparison rather than one made here, because paths only exist
+ * once a file system provider is installed, which a unit test cannot do.
+ */
+fun isPathChecked(isShowingRecentFiles: Boolean, isCurrentPath: Boolean): Boolean =
+    !isShowingRecentFiles && isCurrentPath
 abstract class NavigationItem {
     abstract val id: Long
 

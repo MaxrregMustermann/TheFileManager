@@ -99,7 +99,8 @@ private val storageItems: List<NavigationItem>
         }
 
 private abstract class PathItem(val path: Path) : NavigationItem() {
-    override fun isChecked(listener: Listener): Boolean = listener.currentPath == path
+    override fun isChecked(listener: Listener): Boolean =
+        isPathChecked(listener.isShowingRecentFiles, listener.currentPath == path)
 
     override fun onClick(listener: Listener) {
         if (this is NavigationRoot) {

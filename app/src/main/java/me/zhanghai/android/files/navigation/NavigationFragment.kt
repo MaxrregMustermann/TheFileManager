@@ -57,6 +57,17 @@ class NavigationFragment : Fragment(), NavigationItem.Listener {
         adapter.notifyCheckedChanged()
     }
 
+    /**
+     * Redraws whichever item is marked as selected.
+     *
+     * Needed whenever what is shown changes without the path changing, which is what the recent
+     * list does: the drawer marks the current location, so it would otherwise keep marking the one
+     * that was selected before.
+     */
+    fun refreshCheckedItems() {
+        adapter.notifyCheckedChanged()
+    }
+
     override val currentPath: Path
         get() = listener.currentPath
 

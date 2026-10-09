@@ -20,6 +20,7 @@ import coil.load
 import java8.nio.file.Path
 import me.zhanghai.android.fastscroll.PopupTextProvider
 import me.zhanghai.android.files.R
+import me.zhanghai.android.files.apk.SplitApkContainer
 import me.zhanghai.android.files.coil.AppIconPackageName
 import me.zhanghai.android.files.compat.foregroundCompat
 import me.zhanghai.android.files.compat.getDrawableCompat
@@ -333,6 +334,11 @@ class FileListAdapter(
         menu.findItem(R.id.action_delete).isVisible = !isReadOnly
         menu.findItem(R.id.action_rename).isVisible = !isReadOnly
         menu.findItem(R.id.action_extract).isVisible = file.isArchiveFile
+        // A single file that is a split, or a container holding the whole set, can be merged on its
+        // own. Otherwise the splits have to be selected together first, which is what the action
+        // mode item is for.
+        menu.findItem(R.id.action_merge_splits).isVisible = !isReadOnly && !hasPickOptions &&
+            SplitApkContainer.isMergeable(file.extension)
         menu.findItem(R.id.action_archive).isVisible = !isArchivePath
         menu.findItem(R.id.action_add_bookmark).isVisible = isDirectory
         holder.popupMenu.setOnMenuItemClickListener {
@@ -359,6 +365,10 @@ class FileListAdapter(
                 }
                 R.id.action_extract -> {
                     listener.extractFile(file)
+                    true
+                }
+                R.id.action_merge_splits -> {
+                    listener.mergeSplitApks(file)
                     true
                 }
                 R.id.action_archive -> {
@@ -477,6 +487,9 @@ class FileListAdapter(
         fun confirmDeleteFile(file: FileItem)
         fun showRenameFileDialog(file: FileItem)
         fun extractFile(file: FileItem)
+
+        /** Merges a split APK, or a container of them, on its own. */
+        fun mergeSplitApks(file: FileItem)
         fun showCreateArchiveDialog(file: FileItem)
         fun shareFile(file: FileItem)
         fun copyPath(file: FileItem)

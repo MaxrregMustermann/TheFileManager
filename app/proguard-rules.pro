@@ -33,9 +33,10 @@
     *;
 }
 -keep class * extends java8.nio.channels.SeekableByteChannel {
-    # Used from Rust, which reaches them by name.
-    read([B)I;
-    write([B)V;
+    # Reached from Rust by name, with their exact signatures. Renaming any of these breaks the
+    # archive support at runtime rather than at build time, which is why each is written out.
+    read(Ljava/nio/ByteBuffer;)I;
+    write(Ljava/nio/ByteBuffer;)I;
     position(J)J;
     size()J;
 }

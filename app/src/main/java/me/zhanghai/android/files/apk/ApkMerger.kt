@@ -127,6 +127,15 @@ object ApkMerger {
         return splits
     }
 
+    /**
+     * A temporary directory beside [outputFile], which the merge writes through.
+     *
+     * Created and deleted through java.io rather than java.nio's helper: that helper resolves a
+     * generated name against the directory, which goes through this app's own path implementation
+     * and has failed on it.
+     */
+    fun createWorkingDirectory(outputFile: File): File = createStagingDirectory(outputFile)
+
     private fun createStagingDirectory(outputFile: File): File {
         val parent = outputFile.parentFile ?: File(".")
         parent.mkdirs()

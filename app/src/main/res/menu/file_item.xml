@@ -32,6 +32,10 @@
         android:title="@string/file_item_action_extract" />
 
     <item
+        android:id="@+id/action_merge_splits"
+        android:title="@string/file_list_select_action_merge_splits" />
+
+    <item
         android:id="@+id/action_archive"
         android:title="@string/file_item_action_archive" />
 

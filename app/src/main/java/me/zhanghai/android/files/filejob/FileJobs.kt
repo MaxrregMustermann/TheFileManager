@@ -1485,44 +1485,47 @@ class InstallApkJob(private val file: Path) : FileJob() {
  * Turns split APKs into one installable APK.
  *
  * The selection can be the loose splits themselves or the container they were downloaded in, which
- * is how they are usually obtained. Either way the result is one signed APK named after whatever
- * was selected.
+ * is how they are usually obtained. Either way the result is one APK named after whatever was
+ * selected.
  */
 class MergeSplitApksJob(private val splits: List<Path>) : FileJob() {
     override fun run() {
         val targetDirectory =
             splits.first().parent ?: throw IOException("Cannot find the target directory")
-        // ARSCLib reads a whole directory at a time, and the splits can come from anywhere, so
-        // everything is staged into one working directory before being merged.
-        val workingDirectory = Files.createTempDirectory(targetDirectory, "merge-split-apks-")
+        // A temporary directory next to the splits, because the merged APK has to be written
+        // somewhere the user can reach and the staging copies need room. Created through java.io
+        // rather than java.nio's helper, which builds its path by resolving a generated name and
+        // therefore depends on a path implementation this app does not fully control.
+        val workingDirectory = ApkMerger.createWorkingDirectory(targetDirectory.toFile())
         try {
             val inputs = splits.map { it.toFile() }
             val name = outputName(inputs)
-            val unsigned = workingDirectory.resolve(name)
+            val unsigned = File(workingDirectory, "$name-unsigned.apk")
             // The staged splits are the ones the merger extracted, so the protection check looks at
             // what is actually about to be merged rather than at the container it came out of.
-            val staged = ApkMerger.stage(inputs, unsigned.toFile()) { postProgress(it) }
             postProgress(getString(R.string.file_job_merge_splits_notification_merging))
-            ApkMerger.merge(staged, unsigned.toFile()) { postProgress(it) }
+            val staged = ApkMerger.stage(inputs, unsigned) { postProgress(it) }
+            ApkMerger.merge(staged, unsigned) { postProgress(it) }
             // A Play Store protected app cannot be signed with a key this app owns, so signing it
             // would produce an APK that installs nowhere. Merging it unsigned at least leaves the
             // user something they can inspect, with the reason attached.
             val isProtected = PairIpProtection.isProtected(staged) { postProgress(it) }
-            val signed = workingDirectory.resolve(OutputNames.merged(name))
+            val merged = File(workingDirectory, name)
             if (isProtected) {
                 postProgress(getString(R.string.file_job_merge_splits_notification_protected))
-                Files.copy(unsigned, signed, StandardCopyOption.REPLACE_EXISTING)
+                unsigned.copyTo(merged, overwrite = true)
             } else {
                 postProgress(getString(R.string.file_job_merge_splits_notification_signing))
-                ApkSigner.sign(unsigned.toFile(), signed.toFile(), MINIMUM_SDK_VERSION)
+                ApkSigner.sign(unsigned, merged, MINIMUM_SDK_VERSION)
             }
-            val mergedFileName = signed.fileName
+            val mergedFileName = merged.name
             Files.copy(
-                signed, targetDirectory.resolve(mergedFileName), StandardCopyOption.REPLACE_EXISTING
+                Paths.get(merged.toURI()), targetDirectory.resolve(mergedFileName),
+                StandardCopyOption.REPLACE_EXISTING
             )
             service.showToast("${targetDirectory.fileName}/$mergedFileName")
         } finally {
-            workingDirectory.toFile().deleteRecursively()
+            workingDirectory.deleteRecursively()
         }
     }
 

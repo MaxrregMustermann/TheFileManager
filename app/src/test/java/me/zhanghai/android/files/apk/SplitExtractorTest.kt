@@ -6,6 +6,7 @@
 package me.zhanghai.android.files.apk
 
 import com.reandroid.archive.ArchiveFile
+import java.io.IOException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
@@ -279,5 +280,84 @@ class RecordingApkLogger : com.reandroid.apk.APKLogger {
 
     override fun logVerbose(message: String) {
         messages.add(message)
+    }
+}
+/**
+ * The staging step the merge job runs before anything is merged.
+ *
+ * A container has to be unpacked into the staging directory and the loose splits copied beside it,
+ * so that from here on there is only one thing to do.
+ */
+class ApkStagingTest {
+    @get:Rule
+    val temporaryFolder = TemporaryFolder()
+
+    @Test
+    fun aContainerIsUnpackedAndLooseSplitsAreCopied() {
+        val directory = temporaryFolder.newFolder("in")
+        val splits = listOf("base.apk", "config.en.apk").map { name ->
+            val file = File(directory, name)
+            ApkFixtures.createApk(file, split = name.removeSuffix(".apk").takeIf { it != "base" })
+            file
+        }
+        val container = File(directory, "app.apkm")
+        ZipOutputStream(FileOutputStream(container)).use { zip ->
+            for (split in splits) {
+                zip.putNextEntry(ZipEntry(split.name))
+                zip.write(split.readBytes())
+                zip.closeEntry()
+            }
+            zip.putNextEntry(ZipEntry("info.json"))
+            zip.write("{}".toByteArray())
+            zip.closeEntry()
+        }
+
+        val output = File(temporaryFolder.newFolder("out"), "app.apkm_merged.apk")
+        val staged = ApkMerger.stage(listOf(container), output)
+
+        assertEquals(
+            listOf("base.apk", "config.en.apk"), staged.map { it.name }.sorted()
+        )
+        // The staged files have to be real APKs, not just names that look right.
+        for (file in staged) {
+            assertTrue("$file should be an APK", file.length() > 0)
+            ApkFixtures.entryNames(file)
+        }
+    }
+
+    @Test
+    fun aLooseSplitIsCopiedNotUnpacked() {
+        val directory = temporaryFolder.newFolder("loose")
+        val base = File(directory, "base.apk")
+        ApkFixtures.createApk(base)
+
+        val output = File(temporaryFolder.newFolder("out"), "base.apk")
+        val staged = ApkMerger.stage(listOf(base), output)
+
+        assertEquals(listOf("base.apk"), staged.map { it.name })
+        assertEquals(base.length(), staged.single().length())
+    }
+
+    @Test
+    fun aContainerWithNoApkIsAnError() {
+        val directory = temporaryFolder.newFolder("broken")
+        val container = File(directory, "app.apks")
+        ZipOutputStream(FileOutputStream(container)).use { zip ->
+            zip.putNextEntry(ZipEntry("manifest.json"))
+            zip.write("{}".toByteArray())
+            zip.closeEntry()
+        }
+
+        val output = File(temporaryFolder.newFolder("out"), "app.apks.apk")
+        val error = assertThrows(IOException::class.java) {
+            ApkMerger.stage(listOf(container), output)
+        }
+        assertTrue("the message should name the file: ${error.message}", "app.apks" in error.message!!)
+    }
+
+    @Test
+    fun anEmptySelectionIsAnError() {
+        val output = File(temporaryFolder.newFolder("out"), "x.apk")
+        assertThrows(IOException::class.java) { ApkMerger.stage(emptyList(), output) }
     }
 }

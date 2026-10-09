@@ -40,6 +40,16 @@ impl ChannelReader {
     }
 }
 
+/// The signature of `SeekableByteChannel.read`, which takes a buffer and not a byte array.
+///
+/// The app's channel is a `java8.nio` one, so going through it means going through
+/// `java.nio.ByteBuffer`. Getting this wrong is not a compile error on either side: the JNI lookup
+/// fails at runtime, on the first read, as a `NoSuchMethodError`.
+const CHANNEL_READ: &str = "(Ljava/nio/ByteBuffer;)I";
+
+/// The matching signature of `SeekableByteChannel.write`, which reports how much it took.
+const CHANNEL_WRITE: &str = "(Ljava/nio/ByteBuffer;)I";
+
 impl Read for ChannelReader {
     fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
         if buffer.is_empty() {
@@ -47,18 +57,25 @@ impl Read for ChannelReader {
         }
         let mut guard = attach(&self.vm)?;
         let env = &mut *guard;
-        let array = env.byte_array_from_slice(buffer).map_err(java_error)?;
         let channel = env
             .new_local_ref(self.channel.as_obj())
             .map_err(java_error)?;
+        // A direct buffer over the caller's own memory, so the bytes land where Rust expects them
+        // without a second copy back. The length is what the channel is told it may fill, which is
+        // not the whole slice: the caller may have handed over a buffer larger than it wants read.
+        let wanted = buffer.len();
+        // SAFETY: the pointer is the caller's own slice, `wanted` is its length, and the buffer is
+        // dropped at the end of this call, before the slice can be moved or resized.
+        let direct = unsafe { env.new_direct_byte_buffer(buffer.as_mut_ptr(), wanted) }
+            .map_err(java_error)?;
         let read = env
-            .call_method(&channel, "read", "([B)I", &[(&array).into()])
+            .call_method(&channel, "read", CHANNEL_READ, &[(&direct).into()])
             .and_then(|value| value.i())
             .map_err(java_error)?;
         if read > 0 {
             self.position += read as u64;
         }
-        // java.nio returns 0 at the end of the stream, which is what std::io expects too.
+        // A channel returns 0 at the end of the stream, which is what std::io expects too.
         Ok(read.max(0) as usize)
     }
 }
@@ -139,18 +156,26 @@ impl Write for ChannelWriter {
         let mut written = 0;
         while written < data.len() {
             let end = (written + self.buffer.len()).min(data.len());
-            self.buffer[..end - written].copy_from_slice(&data[written..end]);
+            let chunk = &data[written..end];
             let mut guard = attach(&self.vm)?;
             let env = &mut *guard;
             let channel = env
                 .new_local_ref(self.channel.as_obj())
                 .map_err(java_error)?;
-            let array = env
-                .byte_array_from_slice(&self.buffer[..end - written])
+            let buffer = wrap(env, chunk)?;
+            // A channel reports what it took rather than throwing when it takes less, so a short
+            // write has to be resumed rather than treated as done.
+            let accepted = env
+                .call_method(&channel, "write", CHANNEL_WRITE, &[(&buffer).into()])
+                .and_then(|value| value.i())
                 .map_err(java_error)?;
-            env.call_method(&channel, "write", "([B)V", &[(&array).into()])
-                .map_err(java_error)?;
-            written = end;
+            if accepted <= 0 {
+                return Err(io::Error::new(
+                    io::ErrorKind::WriteZero,
+                    "The channel accepted none of the archive",
+                ));
+            }
+            written += accepted as usize;
         }
         Ok(written)
     }
@@ -158,6 +183,21 @@ impl Write for ChannelWriter {
     fn flush(&mut self) -> io::Result<()> {
         Ok(())
     }
+}
+
+/// `ByteBuffer.wrap`, which is how a read-only buffer over existing bytes is made.
+fn wrap<'a>(env: &mut JNIEnv<'a>, data: &[u8]) -> io::Result<JObject<'a>> {
+    let array = env.byte_array_from_slice(data).map_err(java_error)?;
+    let buffer = env
+        .call_static_method(
+            "java/nio/ByteBuffer",
+            "wrap",
+            "([B)Ljava/nio/ByteBuffer;",
+            &[(&array).into()],
+        )
+        .map_err(java_error)?;
+    let buffer = buffer.l().map_err(java_error)?;
+    Ok(JObject::from(buffer))
 }
 
 impl Seek for ChannelWriter {
