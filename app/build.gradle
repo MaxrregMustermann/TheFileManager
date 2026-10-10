@@ -39,6 +39,20 @@ def rustCargoBin = providers.provider {
 }
 def rustArchiveOutputDir = layout.buildDirectory.dir('rustArchive/jniLibs')
 
+// Where libarchive-rs lives. It is a separate repository from the app, so the path is a property
+// rather than a relative path fixed here: point it at a checkout with -PlibarchiveRsPath=..., which
+// is how a branch is proved before it is merged into the one the default names.
+//
+// The default is the checkout beside the app, which is where the integration branch is.
+def libarchiveRsDirectory = providers.gradleProperty('libarchiveRsPath')
+        .map { file(it) }
+        .orElse(rootProject.file('../libarchive-rs'))
+
+// The cdylib comes from the `jni` crate, which is the only one that is a cdylib. Its [lib] name is
+// `rust_archive`, so the output is librust_archive.so and `System.loadLibrary("rust_archive")` in
+// RustArchive.kt keeps working unchanged.
+def rustArchivePackage = 'libarchive-jni'
+
 // The NDK is not on the PATH, so cargo-ndk is told where it is. Reading it out of local.properties
 // rather than out of the AGP model, which only knows the NDK once the android block has been
 // evaluated, which is after this task has to be configured.
@@ -61,12 +75,12 @@ tasks.register('buildRustArchive', Exec) {
     description = 'Builds the Rust archive library for every ABI the app ships.'
     // Declaring the crate's own files as inputs means editing one re-runs this without having to
     // remember to, which is the whole point of tracking them.
-    inputs.dir(layout.projectDirectory.dir('src/main/rust/src'))
-    inputs.dir(layout.projectDirectory.dir('src/main/rust/tests'))
-    inputs.file(layout.projectDirectory.dir('src/main/rust/Cargo.toml'))
-    inputs.file(layout.projectDirectory.dir('src/main/rust/Cargo.lock'))
+    inputs.dir(new File(libarchiveRsDirectory.get(), 'jni/src'))
+    inputs.dir(new File(libarchiveRsDirectory.get(), 'libarchive/src'))
+    inputs.file(new File(libarchiveRsDirectory.get(), 'Cargo.toml'))
+    inputs.file(new File(libarchiveRsDirectory.get(), 'Cargo.lock'))
     outputs.dir(rustArchiveOutputDir)
-    workingDir layout.projectDirectory.dir('src/main/rust').asFile
+    workingDir libarchiveRsDirectory.get()
     environment 'ANDROID_NDK_HOME', rustNdkDirectory.get()
     // Gradle does not inherit the shell's PATH by default for an Exec task, and cargo lives in the
     // per-user cargo bin directory rather than anywhere a system PATH would have it.
@@ -80,8 +94,19 @@ tasks.register('buildRustArchive', Exec) {
     commandLine(
             [new File(rustCargoBin.get(), 'cargo').absolutePath, 'ndk'] +
                     rustArchiveAbis.collectMany { ['-t', it] } +
-                    ['-o', outputDirectory.get().asFile.absolutePath, 'build', '--release'])
+                    ['-o', outputDirectory.get().asFile.absolutePath, 'build', '--release', '--package',
+                     rustArchivePackage])
     doFirst {
+        // Checked here rather than letting cargo fail with a path it does not recognise, because
+        // "the directory you pointed at is not libarchive-rs" is the useful message and
+        // "could not find Cargo.toml" is not.
+        def source = libarchiveRsDirectory.get()
+        if (!new File(source, 'jni/Cargo.toml').isFile()) {
+            throw new GradleException("libarchive-rs was not found at ${source}. Point the build at a " +
+                    'checkout with -PlibarchiveRsPath=/path/to/libarchive-rs, or set it in ' +
+                    'gradle.properties.')
+        }
+        logger.lifecycle("Building ${rustArchivePackage} from ${source}")
         // Checked here rather than letting the exec fail, so the message says what to install.
         def cargoNdkVersion = providers.exec {
             commandLine new File(rustCargoBin.get(), 'cargo').absolutePath, 'ndk', '--version'
