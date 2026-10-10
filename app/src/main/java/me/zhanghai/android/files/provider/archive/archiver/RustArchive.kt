@@ -90,6 +90,17 @@ internal object RustArchive {
     /** How many fields [nativeNextEntry] returns, which is what `METADATA_FIELDS` is on the Rust side. */
     private const val METADATA_FIELDS = METADATA_IS_SYMLINK + 1
 
+    /**
+     * How many archives this process has opened.
+     *
+     * A measurement, not a limit, and it exists because "reads the archive once" is otherwise
+     * invisible from outside: a caller sees the same bytes either way. Reading every entry of an
+     * archive used to open it once per entry, and this is the number that says so.
+     */
+    @Volatile
+    var openCount: Int = 0
+        private set
+
     @Volatile
     private var isAvailable: Boolean? = null
 
@@ -125,6 +136,7 @@ internal object RustArchive {
             // Zero is what a failed open returns, and every other call would then report the
             // archive as closed, which hides the real problem. Checked here instead.
             check(it != 0L) { "The archive could not be opened" }
+            openCount++
         }
 
         private var isClosed = false

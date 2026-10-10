@@ -8,6 +8,7 @@ package me.zhanghai.android.files.bridge
 import android.app.Activity
 import android.app.Instrumentation
 import android.os.Bundle
+import android.os.SystemClock
 import android.util.Log
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -17,6 +18,8 @@ import java8.nio.channels.SeekableByteChannel
 import java8.nio.file.OpenOption
 import java8.nio.file.Path
 import java8.nio.file.StandardOpenOption
+import me.zhanghai.android.files.provider.archive.ArchiveFileSystem
+import me.zhanghai.android.files.provider.archive.ArchiveFileSystemProvider
 import me.zhanghai.android.files.provider.archive.archiver.ArchiveFormat
 import me.zhanghai.android.files.provider.archive.archiver.NewEntry
 import me.zhanghai.android.files.provider.archive.archiver.RustArchive
@@ -131,6 +134,125 @@ class BridgeInstrumentation : Instrumentation() {
             readForeignZipIfPresent()
         } finally {
             deleteIfExists(archive)
+        }
+
+        proveTheArchiveStaysOpen(ENTRY_COUNT)
+    }
+
+    /**
+     * The property the whole project is for, measured through the app's own file system rather than
+     * through the bridge directly: reading every entry of an archive opens the archive once.
+     *
+     * Before, `ArchiveFileSystem.newInputStream` opened a fresh archive per file and walked it to the
+     * entry by name, so this loop opened the archive once per entry. That is invisible to a user
+     * until the archive is solid: for 400 entries of a solid 7Z, walking from the start re-decodes
+     * the whole block every time, 15.5 s against 204 ms for the same entries stored non-solid. The
+     * bytes that come back are identical either way, so the only way to see this is to count the
+     * opens, which is what [RustArchive.openCount] is for.
+     *
+     * The out-of-order pass is the control, and it is what makes the in-order number mean something:
+     * an archive only moves forward, so reading the same entries backwards cannot reuse it and has
+     * to reopen. If the two numbers came out the same, the in-order one would be an accident rather
+     * than a property.
+     */
+    private fun proveTheArchiveStaysOpen(entryCount: Int) {
+        val archive = cachePath("held-open-proof.zip")
+        deleteIfExists(archive)
+        try {
+            writeZipWithEntries(archive, entryCount)
+            val fileSystem = ArchiveFileSystemProvider.getOrNewFileSystem(localPath(archive))
+            try {
+                // Listing the archive opens it once, to walk it. That is not what is being measured,
+                // so the count starts after it.
+                val entries = fileSystem.getDirectoryChildren(fileSystem.defaultDirectory)
+                check(entries.size == entryCount) {
+                    "the archive listed ${entries.size} entries, not $entryCount"
+                }
+                val afterListing = RustArchive.openCount
+
+                val inOrder = readEveryEntry(fileSystem, entries)
+                val inOrderOpens = RustArchive.openCount - afterListing
+                val inOrderMillis = inOrder.millis
+                Log.i(
+                    REPORT_TAG,
+                    "read $entryCount entries in order through ArchiveFileSystem: " +
+                            "${inOrder.bytes} bytes in $inOrderMillis ms, " +
+                            "$inOrderOpens archive opens"
+                )
+                check(inOrderOpens == 1) {
+                    "reading $entryCount entries in order opened the archive $inOrderOpens times, " +
+                            "not once: the archive is not being held open across reads"
+                }
+
+                val beforeOutOfOrder = RustArchive.openCount
+                val outOfOrder = readEveryEntry(fileSystem, entries.reversed())
+                val outOfOrderOpens = RustArchive.openCount - beforeOutOfOrder
+                Log.i(
+                    REPORT_TAG,
+                    "read the same $entryCount entries in reverse: ${outOfOrder.bytes} bytes in " +
+                            "${outOfOrder.millis} ms, $outOfOrderOpens archive opens"
+                )
+                check(outOfOrder.bytes == inOrder.bytes) {
+                    "reading the same entries backwards returned ${outOfOrder.bytes} bytes, " +
+                            "not ${inOrder.bytes}"
+                }
+                check(outOfOrderOpens > inOrderOpens) {
+                    "reading out of order cost $outOfOrderOpens opens and reading in order cost " +
+                            "${inOrderOpens}, so the cursor is not what is holding the archive open"
+                }
+            } finally {
+                fileSystem.close()
+            }
+        } finally {
+            deleteIfExists(archive)
+        }
+    }
+
+    private class ReadResult(val bytes: Long, val millis: Long)
+
+    /**
+     * Reads every entry of [entries] in the order given, through the file system the app uses, and
+     * checks each entry against the contents it was written with.
+     *
+     * Checking the contents matters: a held archive that served entry *n*'s bytes for entry *n-1*
+     * would return the right number of bytes and the wrong ones, and every length in this file would
+     * still agree.
+     */
+    private fun readEveryEntry(fileSystem: ArchiveFileSystem, entries: List<Path>): ReadResult {
+        var bytes = 0L
+        val start = SystemClock.elapsedRealtime()
+        for (path in entries) {
+            val read = fileSystem.newInputStream(path).use { stream ->
+                readEntryFully(stream)
+            }
+            // The expectation comes from the entry's own name rather than from its position in this
+            // list, so that reading the same entries in another order checks them just as strictly.
+            val expected = Payload.entryContents(heldOpenEntryNumber(path))
+            check(String(read, Charsets.UTF_8) == expected) {
+                "$path came back as ${Payload.describe(read)}, which is not what was written to it"
+            }
+            bytes += read.size
+        }
+        return ReadResult(bytes, SystemClock.elapsedRealtime() - start)
+    }
+
+    /** Writes [count] entries, in order, named by [heldOpenEntryName]. */
+    private fun writeZipWithEntries(path: String, count: Int) {
+        openChannel(
+            path, StandardOpenOption.WRITE, StandardOpenOption.CREATE,
+            StandardOpenOption.TRUNCATE_EXISTING
+        ).use { channel ->
+            RustArchive.Writer(channel, ArchiveFormat.ZIP).use { writer ->
+                for (position in 0 until count) {
+                    val contents = Payload.entryContents(position).toByteArray(Charsets.UTF_8)
+                    writer.writeEntry(
+                        NewEntry(
+                            heldOpenEntryName(position), contents.size.toLong(), null, false
+                        ),
+                        ByteArrayInputStream(contents)
+                    )
+                }
+            }
         }
     }
 
@@ -264,6 +386,9 @@ class BridgeInstrumentation : Instrumentation() {
         const val ENTRY_CONTENTS =
             "The bytes of this entry crossed the JNI boundary and came back intact.\n"
 
+        /** The contents of entry [number], which is also what its name says. */
+        fun entryContents(number: Int): String = "contents of entry $number\n"
+
         /** A readable rendering for the log, plus the first bytes as hex. */
         fun describe(bytes: ByteArray): String {
             val hex = bytes.take(16).joinToString(" ") { String.format("%02x", it) }
@@ -272,8 +397,34 @@ class BridgeInstrumentation : Instrumentation() {
         }
     }
 
+    /**
+     * The name of entry [number] in the archive the held-open proof writes.
+     *
+     * Zero-padded so that the entries sort in the order they were written, which is what makes
+     * reading them "in order" mean something rather than being an accident of the filesystem.
+     */
+    private fun heldOpenEntryName(number: Int): String =
+        String.format("entry-%05d.txt", number)
+
+    /** The [number] in [heldOpenEntryName]'s name, or a failure that says which path confused it. */
+    private fun heldOpenEntryNumber(path: Path): Int {
+        val name = path.toString().substringAfterLast('/')
+        return name.removePrefix("entry-").removeSuffix(".txt").toIntOrNull()
+            ?: throw AssertionError("$path is not an entry name this test wrote")
+    }
+
     companion object {
         const val REPORT_TAG = "BridgeProof"
+
+        /**
+         * How many entries the held-open proof writes.
+         *
+         * Enough that the difference is unmistakable in the log and few enough that the run stays
+         * inside an instrumentation timeout on an API 24 emulator. The property being measured does
+         * not depend on the number - one open for any number of reads - so this is a readability
+         * choice rather than a benchmark size.
+         */
+        const val ENTRY_COUNT = 64
 
         /** Must match CHUNK_SIZE in RustArchive.kt and in the Rust crate. */
         const val CHUNK_SIZE = 64 * 1024
