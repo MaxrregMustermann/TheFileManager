@@ -22,9 +22,10 @@ import java.nio.charset.Charset
  */
 class RustReadArchive @Throws(IOException::class) constructor(
     channel: SeekableByteChannel,
-    passwords: List<String>
+    passwords: List<String>,
+    name: String?
 ) : ReadableArchive {
-    private val reader = RustArchive.Reader(channel, passwords)
+    private val reader = RustArchive.Reader(channel, passwords, name)
 
     override val position: Int
         get() = reader.position
@@ -133,14 +134,23 @@ internal object RustArchive {
      */
     class Reader @Throws(IOException::class) constructor(
         channel: SeekableByteChannel,
-        passwords: List<String>
+        passwords: List<String>,
+        /**
+         * The archive's file name, or null when the caller does not have one.
+         *
+         * Detection reads the bytes first, so a name never overrides what the file is; it is the
+         * fallback for the two formats no signature can identify, ARC and ICE. Without it those
+         * two are detected as ZIP and refused, and every other format is unaffected.
+         */
+        name: String?
     ) : Closeable {
-        private var handle: Long = nativeOpen(ArchiveChannel(channel), passwords.toTypedArray()).also {
-            // Zero is what a failed open returns, and every other call would then report the
-            // archive as closed, which hides the real problem. Checked here instead.
-            check(it != 0L) { "The archive could not be opened" }
-            openCount++
-        }
+        private var handle: Long =
+            nativeOpenNamed(ArchiveChannel(channel), passwords.toTypedArray(), name).also {
+                // Zero is what a failed open returns, and every other call would then report the
+                // archive as closed, which hides the real problem. Checked here instead.
+                check(it != 0L) { "The archive could not be opened" }
+                openCount++
+            }
 
         private var isClosed = false
 
@@ -331,8 +341,8 @@ internal object RustArchive {
         override fun read(b: ByteArray, off: Int, len: Int): Int = -1
     }
 
-    private external fun nativeOpen(
-        channel: ArchiveChannel, passwords: Array<String>
+    private external fun nativeOpenNamed(
+        channel: ArchiveChannel, passwords: Array<String>, name: String?
     ): Long
 
     private external fun nativeNextEntry(handle: Long): Array<String?>?

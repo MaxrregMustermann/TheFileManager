@@ -186,7 +186,11 @@ object ArchiveReader {
         if (channel != null) {
             var successful = false
             try {
-                val archive = readArchive(channel, passwords)
+                // The file name, for the two formats no signature can identify: an ARC starts
+                // with the DOS end-of-file marker and an ICE with its own uncompressed length, so
+                // both are detected as ZIP from their bytes alone. The name is a fallback and
+                // never an override — a real archive keeps its format whatever it is called.
+                val archive = readArchive(channel, passwords, file.fileName?.toString())
                 successful = true
                 return archive to ArchiveCloseable(archive, channel)
             } finally {
@@ -218,11 +222,11 @@ object ArchiveReader {
      */
     @Throws(IOException::class)
     private fun readArchive(
-        channel: SeekableByteChannel, passwords: List<String>
+        channel: SeekableByteChannel, passwords: List<String>, name: String?
     ): ReadableArchive {
         if (RustArchive.ensureAvailable()) {
             try {
-                return RustReadArchive(channel, passwords)
+                return RustReadArchive(channel, passwords, name)
             } catch (e: IOException) {
                 e.printStackTrace()
             }
