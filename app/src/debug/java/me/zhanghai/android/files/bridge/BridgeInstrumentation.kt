@@ -98,7 +98,8 @@ class BridgeInstrumentation : Instrumentation() {
             )
 
             val entries = ArrayList<String>()
-            RustArchive.Reader(openChannel(archive), emptyList()).use { reader ->
+            RustArchive.Reader(openChannel(archive), emptyList(), archive.substringAfterLast('/'))
+                .use { reader ->
                 while (true) {
                     val entry = reader.readEntry() ?: break
                     entries.add(entry.name)
@@ -136,7 +137,65 @@ class BridgeInstrumentation : Instrumentation() {
             deleteIfExists(archive)
         }
 
+        proveTheNamePath()
+
         proveTheArchiveStaysOpen(ENTRY_COUNT)
+    }
+
+    /**
+     * Proves the name path end to end: an .arc and an .ice, which the bytes alone detect as ZIP.
+     *
+     * These two fixtures are the only proof that the file name reaches `nativeOpenNamed`. An ARC
+     * begins with the DOS end-of-file marker and an ICE with its own uncompressed length, so
+     * detection from the bytes alone calls both of them ZIP and they are refused with "no
+     * end-of-central-directory record" — the round trip above cannot fail the way these do
+     * without the name, because a ZIP is identified by its own signature.
+     *
+     * The fixtures, and the plaintext they decode to, are pushed to [FIXTURES_DIR] by
+     * tools/bridge-proof.sh, so the bytes are checked against ground truth rather than against a
+     * constant. A missing fixture is a failure and not a skip: without it this proves nothing
+     * about the name path, and a silent skip would look exactly like a pass.
+     */
+    private fun proveTheNamePath() {
+        proveNamedArchive("store.arc", "LICENSE")
+        proveNamedArchive("license_lha.ice", "compressed")
+    }
+
+    /**
+     * Lists the single entry of the named archive at `store.arc`/`license_lha.ice`, extracts it,
+     * and checks the bytes against the plaintext pushed beside the fixtures.
+     *
+     * The listed size is checked against the bytes that came back too, which is the other half of
+     * what the name path is for: an entry whose size the archive does not record must not be
+     * listed as zero bytes.
+     */
+    private fun proveNamedArchive(fixture: String, entryName: String) {
+        val path = "$FIXTURES_DIR/$fixture"
+        check(exists(path)) {
+            "$fixture is not on the device: tools/bridge-proof.sh pushes it, and without it this " +
+                "proves nothing about the name path"
+        }
+        val plaintext = java.io.File("$FIXTURES_DIR/$PLAINTEXT_FIXTURE").readBytes()
+        RustArchive.Reader(openChannel(path), emptyList(), fixture).use { reader ->
+            val entry = reader.readEntry() ?: throw AssertionError("$fixture listed no entries")
+            check(entry.name == entryName) {
+                "$fixture listed ${entry.name} as its first entry, not $entryName"
+            }
+            check(reader.readEntry() == null) {
+                "$fixture listed more than one entry; this proof is written for the one-entry " +
+                    "fixtures in PROVENANCE.md"
+            }
+            val read = readEntryFully(reader.newDataInputStream())
+            Log.i(REPORT_TAG, "BYTES $fixture/${entry.name} = ${Payload.describe(read)}")
+            check(read.size == entry.size.toInt()) {
+                "${entry.name} is ${entry.size} bytes in the listing but ${read.size} came back"
+            }
+            check(read.contentEquals(plaintext)) {
+                "${entry.name} in $fixture came back as ${Payload.describe(read)}, which is not " +
+                    "the plaintext it was pushed with"
+            }
+        }
+        Log.i(REPORT_TAG, "$fixture listed and extracted through the name path: $entryName")
     }
 
     /**
@@ -282,7 +341,8 @@ class BridgeInstrumentation : Instrumentation() {
 
     /** Reads the first file entry of the archive at [path] and returns its bytes. */
     private fun readZip(path: String): List<Byte> {
-        RustArchive.Reader(openChannel(path), emptyList()).use { reader ->
+        RustArchive.Reader(openChannel(path), emptyList(), path.substringAfterLast('/'))
+            .use { reader ->
             while (true) {
                 val entry = reader.readEntry() ?: break
                 if (entry.isDirectory || entry.isSymlink) {
@@ -330,7 +390,7 @@ class BridgeInstrumentation : Instrumentation() {
         }
         val entries = ArrayList<String>()
         var fileEntries = 0
-        RustArchive.Reader(openChannel(FOREIGN_ZIP), emptyList()).use { reader ->
+        RustArchive.Reader(openChannel(FOREIGN_ZIP), emptyList(), "foreign.zip").use { reader ->
             while (true) {
                 val entry = reader.readEntry() ?: break
                 entries.add(entry.name)
@@ -432,6 +492,18 @@ class BridgeInstrumentation : Instrumentation() {
         /** A ZIP made by the host's `zip`, pushed here by tools/bridge-proof.sh. */
         const val FOREIGN_ZIP =
             "/storage/emulated/0/Android/data/me.zhanghai.android.files/files/foreign.zip"
+
+        /** Where the host pushes the long-tail fixtures, beside the app's own external files. */
+        const val FIXTURES_DIR =
+            "/storage/emulated/0/Android/data/me.zhanghai.android.files/files"
+
+        /**
+         * The plaintext both long-tail fixtures decode to, pushed beside them.
+         *
+         * `store.arc` (one entry, LICENSE) and `license_lha.ice` (one entry, "compressed") are
+         * both the license text, so one ground-truth file checks both formats.
+         */
+        const val PLAINTEXT_FIXTURE = "license.txt"
 
         private val LOCAL_PROVIDER = LocalLinuxFileSystemProvider(LinuxFileSystemProvider)
     }
