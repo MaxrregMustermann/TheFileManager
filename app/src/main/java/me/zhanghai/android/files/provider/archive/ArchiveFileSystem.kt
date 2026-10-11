@@ -192,10 +192,9 @@ internal class ArchiveFileSystem(
             }
         }
         val (archive, closeable) = ArchiveReader.openArchive(archiveFile, passwords)
-        val isPooled = openArchives.size < MAX_OPEN_ARCHIVES
-        val openArchive = OpenArchive(archive, closeable, isPooled)
+        val openArchive = OpenArchive(archive, closeable)
         openArchive.isLeased = true
-        if (isPooled) {
+        if (openArchives.size < MAX_OPEN_ARCHIVES) {
             openArchives.add(openArchive)
         }
         return openArchive
@@ -208,7 +207,24 @@ internal class ArchiveFileSystem(
     private fun closeOpenArchiveLocked(openArchive: OpenArchive) {
         openArchives.remove(openArchive)
         openArchive.isLeased = false
-        openArchive.close()
+        closeQuietly(openArchive)
+    }
+
+    /**
+     * Closes [openArchive], reporting a failure rather than raising it.
+     *
+     * Every caller here is throwing an archive away - it has been walked past, or it is being
+     * released - so a channel that refuses to close costs the caller nothing by being mentioned
+     * once and forgotten. Letting it escape would be worse: [refresh] and [addPassword] cannot
+     * report one, and a cache that could not be released would turn an unrelated user action into a
+     * crash.
+     */
+    private fun closeQuietly(openArchive: OpenArchive) {
+        try {
+            openArchive.close()
+        } catch (e: IOException) {
+            e.printStackTrace()
+        }
     }
 
     /**
@@ -231,7 +247,7 @@ internal class ArchiveFileSystem(
         openArchives.clear()
         for (openArchive in held) {
             openArchive.isLeased = false
-            openArchive.close()
+            closeQuietly(openArchive)
         }
     }
 
@@ -254,8 +270,7 @@ internal class ArchiveFileSystem(
      */
     private class OpenArchive(
         val archive: ReadableArchive,
-        private val closeable: Closeable,
-        private val isPooled: Boolean
+        private val closeable: Closeable
     ) : Closeable {
         var isLeased = false
 
