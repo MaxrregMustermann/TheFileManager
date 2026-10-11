@@ -26,6 +26,9 @@ class RustReadArchive @Throws(IOException::class) constructor(
 ) : ReadableArchive {
     private val reader = RustArchive.Reader(channel, passwords)
 
+    override val position: Int
+        get() = reader.position
+
     @Throws(IOException::class)
     override fun readEntry(charset: Charset): ReadArchive.Entry? =
         reader.readEntry()?.let { entry ->
@@ -141,6 +144,17 @@ internal object RustArchive {
 
         private var isClosed = false
 
+        /**
+         * How many entries [readEntry] has returned, which is the position the next one comes from.
+         *
+         * The native side keeps its own count and this mirrors it, so that an entry the listing saw
+         * at position [n] can be asked for by that [n] later without searching for it by name. Only
+         * the sequential walk [readEntry] performs counts, which is the order the position is
+         * relative to.
+         */
+        var position: Int = 0
+            private set
+
         @Throws(IOException::class)
         private fun handle(): Long {
             // An IOException rather than the IllegalStateException `check` would throw, because
@@ -169,6 +183,7 @@ internal object RustArchive {
             val name = field(METADATA_NAME) ?: throw IOException("An entry has no name")
             val size = field(METADATA_SIZE)?.toLongOrNull() ?: 0
             val lastModifiedMillis = field(METADATA_LAST_MODIFIED_MILLIS)?.toLongOrNull()
+            position++
             return Entry(
                 name, size, lastModifiedMillis, field(METADATA_SYMLINK_TARGET),
                 field(METADATA_IS_ENCRYPTED) == "true", field(METADATA_IS_DIRECTORY) == "true",

@@ -28,15 +28,38 @@ import java.io.InputStream
 import java.nio.charset.Charset
 
 object ArchiveReader {
+    /**
+     * What one walk of an archive produces.
+     *
+     * The three maps are held together because they are built together and become meaningless
+     * together: an index from one walk only means anything next to the entries from that same walk,
+     * and every caller drops all three when the archive is refreshed.
+     */
+    class ArchiveListing(
+        val entries: Map<Path, ReadArchive.Entry>,
+        /**
+         * The position each entry in [entries] was listed from, so a later read can ask for it by
+         * that position instead of by name.
+         *
+         * Absent for the directories this walk synthesised rather than read, and for an entry whose
+         * name was dropped as a path traversal attempt. Those are never read, so they never need an
+         * index, and claiming one would be worse than not having the map.
+         */
+        val entryIndices: Map<Path, Int>,
+        val tree: Map<Path, List<Path>>
+    )
+
     @Throws(IOException::class)
     fun readEntries(
         file: Path,
         passwords: List<String>,
         rootPath: Path
-    ): Pair<Map<Path, ReadArchive.Entry>, Map<Path, List<Path>>> {
+    ): ArchiveListing {
         val entries = mutableMapOf<Path, ReadArchive.Entry>()
+        val entryIndices = mutableMapOf<Path, Int>()
         val rawEntries = readEntries(file, passwords)
-        for (entry in rawEntries) {
+        for (indexedEntry in rawEntries) {
+            val entry = indexedEntry.entry
             var path = rootPath.resolve(entry.name)
             // Normalize an absolute path to prevent path traversal attack.
             if (!path.isAbsolute) {
@@ -56,6 +79,10 @@ object ArchiveReader {
                 }
             }
             entries.getOrPut(path) { entry }
+            // Indexed with the same `getOrPut`, so the index belongs to the entry that was kept.
+            // An archive can hold two entries that normalize to one path, and the second one is not
+            // the one anybody can see.
+            entryIndices.getOrPut(path) { indexedEntry.index }
         }
         entries.getOrPut(rootPath) { createDirectoryEntry("") }
         val tree = mutableMapOf<Path, MutableList<Path>>()
@@ -77,7 +104,7 @@ object ArchiveReader {
                 path = parentPath
             }
         }
-        return entries to tree
+        return ArchiveListing(entries, entryIndices, tree)
     }
 
     private fun createDirectoryEntry(name: String): ReadArchive.Entry {
@@ -88,14 +115,19 @@ object ArchiveReader {
         )
     }
 
+    /** An entry and the position it was listed from, which is what addresses it later. */
+    private class IndexedEntry(val index: Int, val entry: ReadArchive.Entry)
+
     @Throws(IOException::class)
-    private fun readEntries(file: Path, passwords: List<String>): List<ReadArchive.Entry> {
+    private fun readEntries(file: Path, passwords: List<String>): List<IndexedEntry> {
         val charset = archiveFileNameCharset
         val (archive, closeable) = openArchive(file, passwords)
         return closeable.use {
             buildList {
+                var index = 0
                 while (true) {
-                    this += archive.readEntry(charset) ?: break
+                    val entry = archive.readEntry(charset) ?: break
+                    add(IndexedEntry(index++, entry))
                 }
             }
         }
@@ -135,12 +167,16 @@ object ArchiveReader {
      * The fallback exists because the Rust library is compiled from source during the build, so it
      * can be absent from a checkout that has not run the Gradle task, and because `libarchive` covers
      * a few formats the Rust crates do not.
+     *
+     * Also how [ArchiveFileSystem] gets an archive it holds open across several reads: an archive
+     * opened once and walked in order decodes a solid 7Z block once, where one opened per file
+     * decodes it once per file.
      */
     @Throws(IOException::class)
-    private fun openArchive(
+    internal fun openArchive(
         file: Path,
         passwords: List<String>
-    ): Pair<ReadableArchive, ArchiveCloseable> {
+    ): Pair<ReadableArchive, Closeable> {
         val channel = try {
             CacheSizeSeekableByteChannel(file.newByteChannel())
         } catch (e: Exception) {
@@ -218,7 +254,13 @@ object ArchiveReader {
         override fun size(): Long = size
     }
 
-    private val archiveFileNameCharset: Charset
+    /**
+     * How entry names are decoded.
+     *
+     * `internal` rather than private because [ArchiveFileSystem] walks a held-open archive with the
+     * same charset the listing used, and using a different one would compare two different strings.
+     */
+    internal val archiveFileNameCharset: Charset
         get() =
             if (isRunningAsRoot) {
                 try {

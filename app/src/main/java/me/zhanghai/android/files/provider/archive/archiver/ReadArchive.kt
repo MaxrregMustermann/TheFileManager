@@ -35,6 +35,18 @@ import me.zhanghai.android.libarchive.ArchiveException
 class ReadArchive : ReadableArchive {
     private val archive = Archive.readNew()
 
+    /**
+     * How many entries [readEntry] has returned.
+     *
+     * Counted here rather than asked of `libarchive`, which has no notion of one: the counter is
+     * what makes an entry addressable, and the enumeration order of [readEntry] is the order the
+     * address is relative to.
+     */
+    private var entriesRead = 0
+
+    override val position: Int
+        get() = entriesRead
+
     @Throws(ArchiveException::class)
     constructor(inputStream: InputStream, passwords: List<String>) {
         var successful = false
@@ -199,7 +211,7 @@ class ReadArchive : ReadableArchive {
         return Entry(
             name, isEncrypted, lastModifiedTime, lastAccessTime, creationTime, type, size, owner,
             group, mode, symbolicLinkTarget
-        )
+        ).also { entriesRead++ }
     }
 
     private fun getEntryString(stringUtf8: String?, string: ByteArray?, charset: Charset): String? =
