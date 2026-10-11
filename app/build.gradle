@@ -122,9 +122,10 @@ tasks.register('buildRustArchive', Exec) {
             logger.warn("The Rust archive library was not built for $missingAbis. Archives will " +
                     'fall back to libarchive.')
         }
-        // cargo-ndk copies every shared object the build produced, and sevenz-rust2 declares itself
-        // as a cdylib as well as an rlib. Nothing loads that one, so it is deleted rather than
-        // shipped: it is about 300 KB per ABI, and it would sit in the APK unused.
+        // cargo-ndk copies every shared object the build produced, not just the one asked for. Only
+        // librust_archive.so is ours to ship - it is the `jni` crate's [lib], which is the only
+        // cdylib in libarchive-rs - and anything else it finds is roughly 300 KB per ABI sitting in
+        // the APK with nothing to load it.
         output.eachFileRecurse { file ->
             if (file.name != 'librust_archive.so') {
                 file.delete()
