@@ -77,6 +77,8 @@ tasks.register('buildRustArchive', Exec) {
     // remember to, which is the whole point of tracking them.
     inputs.dir(new File(libarchiveRsDirectory.get(), 'jni/src'))
     inputs.dir(new File(libarchiveRsDirectory.get(), 'libarchive/src'))
+    inputs.dir(new File(libarchiveRsDirectory.get(), 'vendor/unarc-rs'))
+    inputs.dir(new File(libarchiveRsDirectory.get(), 'vendor/sevenz-rust2'))
     inputs.file(new File(libarchiveRsDirectory.get(), 'Cargo.toml'))
     inputs.file(new File(libarchiveRsDirectory.get(), 'Cargo.lock'))
     outputs.dir(rustArchiveOutputDir)
