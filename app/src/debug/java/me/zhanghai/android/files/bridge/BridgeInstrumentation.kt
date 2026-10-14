@@ -18,6 +18,7 @@ import java8.nio.channels.SeekableByteChannel
 import java8.nio.file.OpenOption
 import java8.nio.file.Path
 import java8.nio.file.StandardOpenOption
+import me.zhanghai.android.files.R
 import me.zhanghai.android.files.provider.archive.ArchiveFileSystem
 import me.zhanghai.android.files.provider.archive.ArchiveFileSystemProvider
 import me.zhanghai.android.files.provider.archive.archiver.ArchiveFormat
@@ -58,6 +59,7 @@ class BridgeInstrumentation : Instrumentation() {
     override fun onStart() {
         val result = Bundle()
         val outcome = try {
+            disableRootProbing()
             proveTheBridge()
             "PASS"
         } catch (throwable: Throwable) {
@@ -70,6 +72,48 @@ class BridgeInstrumentation : Instrumentation() {
         result.putString(REPORT_TAG, outcome)
         Log.i(REPORT_TAG, outcome)
         finish(if (outcome == "PASS") Activity.RESULT_OK else Activity.RESULT_CANCELED, result)
+    }
+
+    /**
+     * Stops the archive path from probing for root, so `ArchiveFileSystem` is reachable at all.
+     *
+     * This was a real failure, not a hypothetical one. On an API 24 emulator the proof died at the
+     * first `ArchiveFileSystem` call with
+     *
+     *     RemoteFileSystemException: Root isn't available
+     *         at ArchiveFileSystem.getDirectoryChildren(ArchiveFileSystem.kt:320)
+     *
+     * while everything driven straight through `RustArchive.Reader` in the same run passed, with
+     * real bytes. The cause is in the app, not in the harness: `RootablePath` takes its strategy
+     * from `Settings.ROOT_STRATEGY` unless the app is itself running as root
+     * (`RootablePath.kt:17-18`), and `ArchiveReader.openArchive` opens the archive through the
+     * `file.newByteChannel()` extension, which resolves to the root-capable
+     * `LinuxFileSystemProvider` rather than to the `LocalLinuxFileSystemProvider` the rest of this
+     * class uses on purpose. The default strategy is AUTOMATIC, the emulator has no `su` for the
+     * app, and the probe fails.
+     *
+     * NEVER is the right strategy to prove with, and not only because it makes the run work: it is
+     * what a user who has not granted root actually gets, because AUTOMATIC falls back to the
+     * local object for every path that does not require root. Proving with ALWAYS would be proving
+     * a configuration no ordinary user is in.
+     *
+     * `EnumSettingLiveData` stores an enum's **ordinal** as a string rather than its name
+     * (`SettingLiveDatas.kt:133-135`), and `RootStrategy` is `NEVER, AUTOMATIC, ALWAYS`, so NEVER
+     * is `"0"`. That is read back and logged rather than assumed: if the app ever changes how the
+     * preference is stored, this reports that the setting did not take rather than silently
+     * falling back and failing later somewhere unrelated.
+     */
+    private fun disableRootProbing() {
+        val key = targetContext.getString(R.string.pref_key_root_strategy)
+        androidx.preference.PreferenceManager.getDefaultSharedPreferences(targetContext)
+            .edit().putString(key, NEVER_ORDINAL).commit()
+        val stored = androidx.preference.PreferenceManager
+            .getDefaultSharedPreferences(targetContext).getString(key, null)
+        Log.i(REPORT_TAG, "root strategy preference stored as '$stored' ($NEVER_ORDINAL is NEVER)")
+        check(stored == NEVER_ORDINAL) {
+            "the root strategy preference did not take, so the archive path may probe for root " +
+                "again and fail with 'Root isn't available'"
+        }
     }
 
     /**
@@ -488,6 +532,15 @@ class BridgeInstrumentation : Instrumentation() {
 
         /** Must match CHUNK_SIZE in RustArchive.kt and in the Rust crate. */
         const val CHUNK_SIZE = 64 * 1024
+
+        /**
+         * `RootStrategy.NEVER` as the preference stores it.
+         *
+         * An ordinal, not a name: `EnumSettingLiveData` reads its default with
+         * `enumValues[application.getString(res).toInt()]`, and `pref_default_value_root_strategy`
+         * is `"1"`, which is AUTOMATIC. See [disableRootProbing].
+         */
+        const val NEVER_ORDINAL = "0"
 
         /** A ZIP made by the host's `zip`, pushed here by tools/bridge-proof.sh. */
         const val FOREIGN_ZIP =
