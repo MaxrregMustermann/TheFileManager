@@ -864,18 +864,20 @@ class BridgeInstrumentation : Instrumentation() {
      * The worker is a daemon so a wedged thread cannot keep the process alive after the run reports.
      */
     private fun <T> withDeadline(what: String, body: () -> T): T {
-        val worker = Thread(null, {
-            Thread.currentThread().isDaemon = true
-            // Two thread-locals rather than one generic holder: a sealed class holding a type
-            // parameter cannot be matched by `is` without naming it, and this runs on every one of
-            // 46 archives, so it should read plainly.
+        // The result travels back through a holder the closure captures. It must not travel through a
+        // ThreadLocal: a ThreadLocal is keyed by thread, so the worker sets one value and the
+        // thread that joins then reads a different thread's - null - which is what the first version
+        // did, and it turned every archive into a NullPointerException.
+        val outcome = arrayOfNulls<Any?>(2)
+        val work = Runnable {
             val attempt = runCatching(body)
-            if (attempt.isSuccess) {
-                DEADLINE_VALUE.set(attempt.getOrNull())
-            } else {
-                DEADLINE_ERROR.set(attempt.exceptionOrNull())
-            }
-        }, "corpus-$what", 1 shl 20)
+            outcome[if (attempt.isSuccess) 0 else 1] =
+                attempt.getOrNull() ?: attempt.exceptionOrNull()
+        }
+        // Daemon before start, never inside the body: `isDaemon` throws
+        // IllegalThreadStateException on a thread that has already begun running, which took the
+        // whole run down on the first archive before a single one was proved.
+        val worker = Thread(null, work, "corpus-$what", 1 shl 20).apply { isDaemon = true }
         worker.start()
         worker.join(CORPUS_DEADLINE_MILLIS)
         if (worker.isAlive) {
@@ -884,15 +886,13 @@ class BridgeInstrumentation : Instrumentation() {
                     "is not terminating"
             )
         }
-        DEADLINE_ERROR.get()?.let { throw AssertionError("$what threw", it) }
+        val failure = outcome[1]
+        if (failure != null) {
+            throw AssertionError("$what threw", failure as Throwable)
+        }
         @Suppress("UNCHECKED_CAST")
-        return DEADLINE_VALUE.get() as T
+        return outcome[0] as T
     }
-
-    /** One worker at a time, so the result needs no synchronisation beyond the thread join. */
-    private val DEADLINE_VALUE = ThreadLocal<Any?>()
-
-    private val DEADLINE_ERROR = ThreadLocal<Throwable?>()
 
     /**
      * Reads one archive through both paths and decides whether that was correct.
@@ -906,46 +906,82 @@ class BridgeInstrumentation : Instrumentation() {
      *    is also acceptable, because truncation legitimately leaves an index readable. What is *not*
      *    acceptable is silently returning corrupt bytes, because that is the J-0025 defect.
      */
+    /**
+     * Decides whether one archive behaved as its `kind` requires.
+     *
+     * The two kinds want opposite things, and conflating them is how this stage first reported 34
+     * failures out of 46 when the library had in fact refused every single broken archive correctly:
+     *
+     *  * `good` must open, and every file entry must hash to the ground truth. Anything less is a
+     *    failure, including a refusal — a good archive has no reason to be refused.
+     *  * `broken` must never return bytes that disagree with the ground truth. Everything else is
+     *    the correct answer: refusing outright, erroring on the first read, and listing nothing are
+     *    all acceptable for an archive that has been deliberately damaged.
+     *
+     * So the one outcome that fails a broken archive is [WrongBytes], and it is the one outcome that
+     * matters most on this whole project: it is exactly the J-0025 defect, a corrupt archive that
+     * extracted as though it were fine.
+     */
     private fun proofOneArchive(archive: CorpusArchive): CorpusVerdict {
         val started = android.os.SystemClock.elapsedRealtime()
         val path = "$FIXTURES_DIR/${archive.name}"
         val truth = loadGroundTruth(archive)
-        val readerOutcome = readThroughReader(path, archive.name, truth)
-        val fsOutcome = readThroughFileSystem(path, truth)
+        val reader = readThroughReader(path, archive.name, truth)
+        val fileSystem = readThroughFileSystem(path, truth)
+        val elapsed = android.os.SystemClock.elapsedRealtime() - started
 
-        val opened = readerOutcome.opened || fsOutcome.opened
-        val entriesSeen = maxOf(readerOutcome.entries, fsOutcome.entries)
-        val verified = readerOutcome.verified + fsOutcome.verified
-        val rejected = !readerOutcome.opened && !fsOutcome.opened
-        val failure = readerOutcome.failure ?: fsOutcome.failure
+        val opened = reader.opened || fileSystem.opened
+        val entriesSeen = maxOf(reader.entries, fileSystem.entries)
+        val verified = reader.verified + fileSystem.verified
+        val rejected = !reader.opened && !fileSystem.opened
+        val wrongBytes = reader.wrongBytes || fileSystem.wrongBytes
 
-        if (failure != null) {
-            // A corrupt archive that produced wrong bytes is the defect, not an acceptable outcome.
-            val prefix = if (archive.kind == "broken") "broken archive produced bad output" else
-                "good archive failed"
-            return CorpusVerdict(archive, opened, entriesSeen, verified, rejected,
-                "$prefix: $failure", android.os.SystemClock.elapsedRealtime() - started)
+        val failure = when {
+            wrongBytes -> "corrupt bytes were returned as if they were good: " +
+                listOfNotNull(reader.refusal, fileSystem.refusal)
+                    .firstOrNull { it.contains("hashed to") } ?: "a hash mismatch"
+            archive.kind == "good" && !opened ->
+                "a good archive did not open: " +
+                    listOfNotNull(reader.refusal, fileSystem.refusal).joinToString("; ")
+            archive.kind == "good" && reader.refusal != null ->
+                "a good archive failed to read: ${reader.refusal}"
+            archive.kind == "good" && fileSystem.refusal != null ->
+                "a good archive failed to read: ${fileSystem.refusal}"
+            else -> null
         }
-        if (archive.kind == "good" && !opened) {
-            return CorpusVerdict(archive, opened, entriesSeen, verified, rejected,
-                "a good archive did not open at all", android.os.SystemClock.elapsedRealtime() - started)
-        }
-        return CorpusVerdict(archive, opened, entriesSeen, verified, rejected, null,
-            android.os.SystemClock.elapsedRealtime() - started)
+        return CorpusVerdict(archive, opened, entriesSeen, verified, rejected, failure, elapsed)
     }
+
+    /** One worker at a time, so the result needs no synchronisation beyond the thread join. */
+    /**
+     * Bytes came back that the ground truth says are wrong.
+     *
+     * Its own type because it is the *only* outcome that is a failure for a broken archive. Every
+     * other refusal — a truncated stream, a missing end-of-central-directory record, a CRC the
+     * reader catches itself — is the correct behaviour for an archive that has been deliberately
+     * damaged, and folding them together meant the report called correct behaviour a defect.
+     */
+    private class WrongBytes(message: String) : AssertionError(message)
+
+    private fun wrongBytes(name: String, actual: String, expected: String) = WrongBytes(
+        "$name hashed to $actual but ground truth says $expected; corrupt bytes were returned " +
+            "as if they were good"
+    )
 
     private class PathOutcome(
         val opened: Boolean,
         val entries: Int,
         val verified: Int,
-        val failure: String?
+        /** Set only when bytes that disagree with the ground truth came back. */
+        val wrongBytes: Boolean,
+        val refusal: String?
     )
 
     /**
      * Reads every file entry through [RustArchive.Reader], which is the path that goes straight at
      * the JNI bridge.
      */
-    private fun readThroughReader(path: String, name: String, truth: Map<String, String>?): PathOutcome {
+    private fun readThroughReader(path: String, name: String, truth: Map<String, String?>?): PathOutcome {
         var entries = 0
         var verified = 0
         return try {
@@ -956,22 +992,24 @@ class BridgeInstrumentation : Instrumentation() {
                     if (entry.isDirectory || entry.isSymlink) {
                         continue
                     }
-                    val bytes = readEntryFully(reader.newDataInputStream())
                     val expected = truth?.get(entry.name)
                     if (expected == null) {
+                        // A directory, or an entry the manifest does not describe. Either way there
+                        // is nothing to check it against, and opening a directory's stream is what
+                        // made seven good archives look broken.
                         continue
                     }
+                    val bytes = readEntryFully(reader.newDataInputStream())
                     val actual = sha256(bytes)
-                    check(actual == expected) {
-                        "$name/${entry.name} hashed to $actual but ground truth says $expected; " +
-                            "corrupt bytes were returned as if they were good"
+                    if (actual != expected) {
+                        throw wrongBytes("$name/${entry.name}", actual, expected)
                     }
                     verified++
                 }
-                PathOutcome(true, entries, verified, null)
+                PathOutcome(true, entries, verified, false, null)
             }
         } catch (e: Throwable) {
-            PathOutcome(false, entries, verified, describeFailure(name, e))
+            PathOutcome(false, entries, verified, e is WrongBytes, describeFailure(name, e))
         }
     }
 
@@ -979,10 +1017,11 @@ class BridgeInstrumentation : Instrumentation() {
      * Reads every entry through [ArchiveFileSystem], which is the path the app's own UI takes and
      * which therefore exercises the root-strategy fix in [disableRootProbing].
      */
-    private fun readThroughFileSystem(path: String, truth: Map<String, String>?): PathOutcome {
+    private fun readThroughFileSystem(path: String, truth: Map<String, String?>?): PathOutcome {
         var entries = 0
         var verified = 0
-        val failures = ArrayList<String>()
+        var wrong = false
+        val refusals = ArrayList<String>()
         var opened = false
         return try {
             val fileSystem = ArchiveFileSystemProvider.getOrNewFileSystem(localPath(path))
@@ -991,28 +1030,33 @@ class BridgeInstrumentation : Instrumentation() {
                 for (child in fileSystem.getDirectoryChildren(fileSystem.defaultDirectory)) {
                     val name = child.toString().substringAfterLast('/')
                     entries++
+                    // Checked before the stream is opened. `ArchiveFileSystem` hands back directory
+                    // entries alongside files and there is no isDirectory on the listing, so the
+                    // manifest is what distinguishes them: a directory appears with no SHA-256.
+                    if (truth?.get(name) == null) {
+                        continue
+                    }
                     try {
                         val bytes = readEntryFully(fileSystem.newInputStream(child))
-                        val expected = truth?.get(name)
-                        if (expected == null) {
-                            continue
-                        }
                         val actual = sha256(bytes)
-                        check(actual == expected) {
-                            "$name hashed to $actual but ground truth says $expected; " +
-                                "corrupt bytes were returned as if they were good"
+                        val expected = truth[name]!!
+                        if (actual != expected) {
+                            throw wrongBytes(name, actual, expected)
                         }
                         verified++
                     } catch (e: Throwable) {
-                        failures += "$name: ${e.message ?: e::class.java.simpleName}"
+                        if (e is WrongBytes) {
+                            wrong = true
+                        }
+                        refusals += "$name: ${e.message ?: e::class.java.simpleName}"
                     }
                 }
-                PathOutcome(true, entries, verified, failures.firstOrNull())
+                PathOutcome(true, entries, verified, wrong, refusals.firstOrNull())
             } finally {
                 fileSystem.close()
             }
         } catch (e: Throwable) {
-            PathOutcome(opened, entries, verified, describeFailure(path, e))
+            PathOutcome(opened, entries, verified, e is WrongBytes, describeFailure(path, e))
         }
     }
 
@@ -1048,8 +1092,14 @@ class BridgeInstrumentation : Instrumentation() {
         return corpus
     }
 
-    /** The per-entry SHA-256s for one archive, or null when the manifest names no file for it. */
-    private fun loadGroundTruth(archive: CorpusArchive): Map<String, String>? {
+    /**
+     * The per-entry SHA-256s for one archive, keyed by entry name.
+     *
+     * A directory maps to null. The manifest records directories with no SHA-256, and the listing
+     * API hands them back mixed in with the files, so without this the only way to tell them apart
+     * was to try opening a directory's data stream and watch it fail.
+     */
+    private fun loadGroundTruth(archive: CorpusArchive): Map<String, String?>? {
         val fileName = archive.groundTruth ?: return null
         val file = java.io.File("$FIXTURES_DIR/$fileName")
         if (!file.isFile) {
@@ -1058,12 +1108,11 @@ class BridgeInstrumentation : Instrumentation() {
             return null
         }
         val entries = org.json.JSONObject(file.readText()).getJSONArray("entries")
-        val truth = HashMap<String, String>(entries.length())
+        val truth = HashMap<String, String?>(entries.length())
         for (i in 0 until entries.length()) {
             val entry = entries.getJSONObject(i)
-            if (entry.has("sha256")) {
-                truth[entry.getString("name")] = entry.getString("sha256")
-            }
+            truth[entry.getString("name")] =
+                if (entry.has("sha256")) entry.getString("sha256") else null
         }
         return truth
     }
@@ -1157,16 +1206,24 @@ class BridgeInstrumentation : Instrumentation() {
          * Every stage, in the order they run, so a log line names which one produced it and the
          * summary can say how many ran.
          *
-         * A receiver lambda rather than a `::method` reference because three of the five take an
-         * argument and the other two are private instance methods; a receiver covers all five
-         * without a wrapper per stage.
+         * The order is a constraint, not a preference. `which-library` works by opening an ARC and
+         * checking that `libarchive-jni.so` was *not* mapped into the process — the C library has no
+         * ARC reader, so its absence is what proves the Rust one served the file. Anything that
+         * reaches `ArchiveFileSystem` before it will map the C library in, and the check then fails
+         * for a reason that has nothing to do with archives. `the-corpus` goes through
+         * `ArchiveFileSystem` for half of every archive, so it has to run after `which-library`;
+         * running it third turned that stage's negative control into a false alarm.
+         *
+         * A receiver lambda rather than a `::method` reference because one stage takes an argument
+         * and the rest are private instance methods; a receiver covers all of them without a
+         * wrapper per stage.
          */
         val STAGES: List<Pair<String, BridgeInstrumentation.() -> Unit>> = listOf(
             "the-bridge" to { proveTheBridge() },
             "the-formats" to { proveTheFormats() },
-            "the-corpus" to { proveCorpus() },
-            "the-name-path" to { proveTheNamePath() },
             "which-library" to { proveWhichLibrary() },
+            "the-name-path" to { proveTheNamePath() },
+            "the-corpus" to { proveCorpus() },
             "the-archive-stays-open" to { proveTheArchiveStaysOpen(ENTRY_COUNT) }
         )
 
