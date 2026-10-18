@@ -40,6 +40,13 @@
     <bool name="pref_default_value_material_design_3">false</bool>
     <string name="pref_key_night_mode">key_night_mode</string>
     <string name="pref_default_value_night_mode">0</string>
+    <string name="pref_key_app_name">app_name</string>
+    <string name="pref_default_value_app_name">0</string>
+    <string-array name="pref_entry_values_app_name">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+    </string-array>
     <string-array name="pref_entry_values_night_mode">
         <item>0</item>
         <item>1</item>

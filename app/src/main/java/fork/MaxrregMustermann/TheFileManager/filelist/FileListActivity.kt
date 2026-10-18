@@ -1,0 +1,98 @@
+/*
+ * Copyright (c) 2018 Hai Zhang <dreaming.in.code.zh@gmail.com>
+ * All Rights Reserved.
+ */
+
+package fork.MaxrregMustermann.TheFileManager.filelist
+
+import android.content.Context
+import android.content.Intent
+import android.os.Bundle
+import android.view.KeyEvent
+import android.view.View
+import androidx.activity.result.contract.ActivityResultContract
+import androidx.fragment.app.commit
+import java8.nio.file.Path
+import fork.MaxrregMustermann.TheFileManager.app.AppActivity
+import fork.MaxrregMustermann.TheFileManager.file.MimeType
+import fork.MaxrregMustermann.TheFileManager.settings.Settings
+import fork.MaxrregMustermann.TheFileManager.util.createIntent
+import fork.MaxrregMustermann.TheFileManager.util.extraPath
+import fork.MaxrregMustermann.TheFileManager.util.putArgs
+import fork.MaxrregMustermann.TheFileManager.util.valueCompat
+
+class FileListActivity : AppActivity() {
+    private lateinit var fragment: FileListFragment
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        // The launcher and the recents screen read this activity's label as the app's name, so it
+        // comes from the setting rather than from the manifest.
+        setTitle(Settings.APP_NAME.valueCompat.titleRes)
+
+        // Calls ensureSubDecor().
+        findViewById<View>(android.R.id.content)
+        if (savedInstanceState == null) {
+            fragment = FileListFragment().putArgs(FileListFragment.Args(intent))
+            supportFragmentManager.commit { add(android.R.id.content, fragment) }
+        } else {
+            fragment = supportFragmentManager.findFragmentById(android.R.id.content)
+                as FileListFragment
+        }
+    }
+
+    override fun onKeyShortcut(keyCode: Int, event: KeyEvent): Boolean {
+        if (fragment.onKeyShortcut(keyCode, event)) {
+            return true
+        }
+        return super.onKeyUp(keyCode, event)
+    }
+
+    companion object {
+        fun createViewIntent(path: Path): Intent =
+            FileListActivity::class.createIntent()
+                .setAction(Intent.ACTION_VIEW)
+                .apply { extraPath = path }
+    }
+
+    class OpenFileContract : ActivityResultContract<List<MimeType>, Path?>() {
+        override fun createIntent(context: Context, input: List<MimeType>): Intent =
+            FileListActivity::class.createIntent()
+                .setAction(Intent.ACTION_OPEN_DOCUMENT)
+                .setType(MimeType.ANY.value)
+                .addCategory(Intent.CATEGORY_OPENABLE)
+                .putExtra(Intent.EXTRA_MIME_TYPES, input.map { it.value }.toTypedArray())
+
+        override fun parseResult(resultCode: Int, intent: Intent?): Path? =
+            if (resultCode == RESULT_OK) intent?.extraPath else null
+    }
+
+    class CreateFileContract : ActivityResultContract<Triple<MimeType, String?, Path?>, Path?>() {
+        override fun createIntent(
+            context: Context,
+            input: Triple<MimeType, String?, Path?>
+        ): Intent =
+            FileListActivity::class.createIntent()
+                .setAction(Intent.ACTION_CREATE_DOCUMENT)
+                .setType(input.first.value)
+                .addCategory(Intent.CATEGORY_OPENABLE)
+                .apply {
+                    input.second?.let { putExtra(Intent.EXTRA_TITLE, it) }
+                    input.third?.let { extraPath = it }
+                }
+
+        override fun parseResult(resultCode: Int, intent: Intent?): Path? =
+            if (resultCode == RESULT_OK) intent?.extraPath else null
+    }
+
+    class OpenDirectoryContract : ActivityResultContract<Path?, Path?>() {
+        override fun createIntent(context: Context, input: Path?): Intent =
+            FileListActivity::class.createIntent()
+                .setAction(Intent.ACTION_OPEN_DOCUMENT_TREE)
+                .apply { input?.let { extraPath = it } }
+
+        override fun parseResult(resultCode: Int, intent: Intent?): Path? =
+            if (resultCode == RESULT_OK) intent?.extraPath else null
+    }
+}

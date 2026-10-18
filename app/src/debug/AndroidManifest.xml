@@ -13,12 +13,12 @@
       proof is something to run deliberately, not something the shipping app does at launch.
 
       android:targetPackage must be the app's own package, and the app's id is
-      me.zhanghai.android.files. The target of the instrumentation, `am instrument -w
-      me.zhanghai.android.files.test/...`, is the instrumentation's own component name, which is
+      fork.MaxrregMustermann.TheFileManager. The target of the instrumentation, `am instrument -w
+      fork.MaxrregMustermann.TheFileManager.test/...`, is the instrumentation's own component name, which is
       `<package>.<class>`.
       -->
     <instrumentation
-        android:name="me.zhanghai.android.files.bridge.BridgeInstrumentation"
-        android:targetPackage="me.zhanghai.android.files" />
+        android:name="fork.MaxrregMustermann.TheFileManager.bridge.BridgeInstrumentation"
+        android:targetPackage="fork.MaxrregMustermann.TheFileManager" />
 
 </manifest>

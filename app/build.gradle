@@ -235,13 +235,13 @@ tasks.matching { it.name.startsWith('merge') && it.name.endsWith('JniLibFolders'
 
 
 android {
-    namespace 'me.zhanghai.android.files'
+    namespace 'fork.MaxrregMustermann.TheFileManager'
     buildToolsVersion libs.versions.buildTools.get()
     compileSdk 37
     compileSdkMinor 2
     ndkVersion libs.versions.ndk.get()
     defaultConfig {
-        applicationId 'me.zhanghai.android.files'
+        applicationId 'fork.MaxrregMustermann.TheFileManager'
         minSdk 23
         // Not supporting the ACCESS_LOCAL_NETWORK runtime permission yet.
         //noinspection OldTargetApi

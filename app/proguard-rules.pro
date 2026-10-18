@@ -29,26 +29,26 @@
 # The archive support calls these by name from Rust, so R8 must not rename or remove them. The
 # methods themselves are covered by the rule above, but the class has to survive too, and the ones
 # it takes and returns are part of that.
--keep class me.zhanghai.android.files.provider.archive.archiver.RustArchive {
+-keep class fork.MaxrregMustermann.TheFileManager.provider.archive.archiver.RustArchive {
     *;
 }
 # The channel the archive support reads and writes through. Rust looks these up by name against
 # this class, so renaming or removing any of them breaks archives at runtime rather than at build
 # time. See ArchiveChannel for why the app's own channels are not handed over directly.
--keep class me.zhanghai.android.files.provider.archive.archiver.ArchiveChannel {
+-keep class fork.MaxrregMustermann.TheFileManager.provider.archive.archiver.ArchiveChannel {
     public <methods>;
 }
 
 # App
--keep class me.zhanghai.android.files.** implements androidx.appcompat.view.CollapsibleActionView { *; }
--keep class me.zhanghai.android.files.provider.common.ByteString { *; }
--keep class me.zhanghai.android.files.provider.linux.syscall.** { *; }
+-keep class fork.MaxrregMustermann.TheFileManager.** implements androidx.appcompat.view.CollapsibleActionView { *; }
+-keep class fork.MaxrregMustermann.TheFileManager.provider.common.ByteString { *; }
+-keep class fork.MaxrregMustermann.TheFileManager.provider.linux.syscall.** { *; }
 -keepnames class * extends java.lang.Exception
 # For Class.getEnumConstants()
 -keepclassmembers enum * {
     public static **[] values();
 }
--keepnames class me.zhanghai.android.files.** implements android.os.Parcelable
+-keepnames class fork.MaxrregMustermann.TheFileManager.** implements android.os.Parcelable
 
 # Apache FtpServer
 -keepclassmembers class * implements org.apache.mina.core.service.IoProcessor {

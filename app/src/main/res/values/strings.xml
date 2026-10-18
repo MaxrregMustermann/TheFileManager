@@ -7,7 +7,11 @@
 
 <resources>
 
-    <string name="app_name">Material Files</string>
+    <string name="app_name">The File Manager</string>
+    <!-- The alternatives offered by the app name setting, in the order they are listed there. -->
+    <string name="app_name_the_file_manager">The File Manager</string>
+    <string name="app_name_file_manager">File Manager</string>
+    <string name="app_name_files">Files</string>
 
     <string name="close">Close</string>
     <string name="copy">Copy</string>
@@ -759,6 +763,12 @@
         <item>Based on battery saver</item>
     </string-array>
     <string name="settings_black_night_mode">Black night mode</string>
+    <string name="settings_app_name_title">App name</string>
+    <string-array name="settings_app_name_entries">
+        <item>@string/app_name_the_file_manager</item>
+        <item>@string/app_name_file_manager</item>
+        <item>@string/app_name_files</item>
+    </string-array>
     <string name="settings_file_list_animation_title">File list animation</string>
     <string name="settings_file_name_ellipsize_title">Display long file name</string>
     <string-array name="settings_file_name_ellipsize_entries">
