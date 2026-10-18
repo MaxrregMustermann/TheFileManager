@@ -15,8 +15,6 @@ apply from: '../signing.gradle'
 // These two come from the root project's buildscript classpath rather than the plugins block:
 // applying them through the plugins DSL makes generateDebugBuildConfig run too late, and the
 // custom BuildConfig fields never reach the Kotlin compiler.
-apply plugin: 'com.google.gms.google-services'
-apply plugin: 'com.google.firebase.crashlytics'
 //#endif
 
 // The Rust half of the archive support, built from source during the build and packaged as an
@@ -290,11 +288,6 @@ android {
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             signingConfig signingConfigs.release
-//#ifdef NONFREE
-            firebaseCrashlytics {
-                nativeSymbolUploadEnabled true
-            }
-//#endif
         }
     }
     sourceSets {
@@ -431,10 +424,4 @@ dependencies {
     // a mock.
     testImplementation libs.androidx.sqlite.bundled.jvm
     testImplementation libs.androidx.sqlite.jvm
-
-//#ifdef NONFREE
-    implementation platform(libs.firebase.bom)
-    implementation libs.firebase.analytics
-    implementation libs.firebase.crashlytics.ndk
-//#endif
 }
