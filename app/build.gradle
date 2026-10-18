@@ -53,6 +53,23 @@ def libarchiveRsDirectory = providers.gradleProperty('libarchiveRsPath')
 // RustArchive.kt keeps working unchanged.
 def rustArchivePackage = 'libarchive-jni'
 
+// The Cargo profile the JNI cdylib is built with, and not `release`.
+//
+// The library's `[profile.release]` sets `panic = "abort"`, which is right for the library and
+// wrong for this cdylib: a Rust panic that reaches an `extern "system"` boundary on Android does not
+// become a Java exception, it aborts the process. Under abort the `catch_unwind` guard in
+// jni/src/lib.rs never runs, so a malformed archive costs the user the app rather than an error.
+// `release-unwind` inherits release unchanged and only sets `panic = "unwind"`; measured cost is
+// 5599456 -> 6091732 bytes for the x86 library, +8.8%.
+//
+// Verified rather than assumed, from the library:
+//     cargo run --profile release        --example panic_guard   -> SIGABRT, no output
+//     cargo run --profile release-unwind --example panic_guard   -> caught, exit 0
+// and the guard below checks at configuration time that this profile still exists there, because
+// a profile that silently went missing would ship the aborting build and every test would still
+// be green.
+def rustArchiveProfile = 'release-unwind'
+
 // The NDK is not on the PATH, so cargo-ndk is told where it is. Reading it out of local.properties
 // rather than out of the AGP model, which only knows the NDK once the android block has been
 // evaluated, which is after this task has to be configured.
@@ -81,6 +98,36 @@ tasks.register('buildRustArchive', Exec) {
     inputs.dir(new File(libarchiveRsDirectory.get(), 'vendor/sevenz-rust2'))
     inputs.file(new File(libarchiveRsDirectory.get(), 'Cargo.toml'))
     inputs.file(new File(libarchiveRsDirectory.get(), 'Cargo.lock'))
+    // Guard on rustArchiveProfile above. Cargo is perfectly happy to be told `--profile` a profile
+    // that does not exist: it treats an unknown profile name as a custom one with default
+    // settings, which means `panic` falls back to `unwind` by accident rather than by decision, or
+    // - if the name collides with something - the build succeeds with the wrong panic strategy and
+    // nothing anywhere fails. Neither is acceptable for the one setting that decides whether a
+    // corrupt archive is an error message or a dead process, so the profile is read out of the
+    // library's workspace manifest and the task refuses to configure if it is not there with
+    // `panic = "unwind"`.
+    //
+    // Runs when the task is configured rather than when it executes, so it catches a wrong profile
+    // even on an invocation where the task would have been UP-TO-DATE and done nothing.
+    def workspaceManifest = new File(libarchiveRsDirectory.get(), 'Cargo.toml')
+    if (workspaceManifest.isFile()) {
+        def manifestText = workspaceManifest.getText('UTF-8')
+        def profileBlock = manifestText =~ /(?ms)^\[profile\.${java.util.regex.Pattern.quote(rustArchiveProfile)}\](.*?)(?=^\[|\z)/
+        if (!profileBlock.find()) {
+            throw new GradleException(
+                    "libarchive-rs at ${workspaceManifest} has no [profile.${rustArchiveProfile}], " +
+                    "which is the profile this task builds librust_archive.so with. Without it " +
+                    'cargo falls back to its own defaults for an unknown profile name, so the ' +
+                    'panic strategy stops being a decision. See the comment on rustArchiveProfile.')
+        }
+        if (!(profileBlock.group(1) =~ /panic\s*=\s*"unwind"/).find()) {
+            throw new GradleException(
+                    "[profile.${rustArchiveProfile}] in ${workspaceManifest} does not set " +
+                    'panic = "unwind". Building the cdylib that way makes the catch_unwind guard ' +
+                    'in jni/src/lib.rs dead code, and a panic on a corrupt archive aborts the app ' +
+                    'instead of throwing.')
+        }
+    }
     outputs.dir(rustArchiveOutputDir)
     workingDir libarchiveRsDirectory.get()
     environment 'ANDROID_NDK_HOME', rustNdkDirectory.get()
@@ -96,8 +143,8 @@ tasks.register('buildRustArchive', Exec) {
     commandLine(
             [new File(rustCargoBin.get(), 'cargo').absolutePath, 'ndk'] +
                     rustArchiveAbis.collectMany { ['-t', it] } +
-                    ['-o', outputDirectory.get().asFile.absolutePath, 'build', '--release', '--package',
-                     rustArchivePackage])
+                    ['-o', outputDirectory.get().asFile.absolutePath, 'build',
+                     '--profile', rustArchiveProfile, '--package', rustArchivePackage])
     doFirst {
         // Checked here rather than letting cargo fail with a path it does not recognise, because
         // "the directory you pointed at is not libarchive-rs" is the useful message and
