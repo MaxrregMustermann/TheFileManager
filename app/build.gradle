@@ -90,14 +90,60 @@ def rustNdkDirectory = providers.provider {
 tasks.register('buildRustArchive', Exec) {
     group = 'build'
     description = 'Builds the Rust archive library for every ABI the app ships.'
-    // Declaring the crate's own files as inputs means editing one re-runs this without having to
-    // remember to, which is the whole point of tracking them.
-    inputs.dir(new File(libarchiveRsDirectory.get(), 'jni/src'))
-    inputs.dir(new File(libarchiveRsDirectory.get(), 'libarchive/src'))
-    inputs.dir(new File(libarchiveRsDirectory.get(), 'vendor/unarc-rs'))
-    inputs.dir(new File(libarchiveRsDirectory.get(), 'vendor/sevenz-rust2'))
+    // The rule for what is an input: anything that can change the archive cargo links into the APK.
+    // That is the workspace manifest and lockfile, and for each workspace member its own manifest
+    // and its sources under src/. There is no build script anywhere in libarchive-rs (no build.rs,
+    // and both vendored members set build = false), so nothing outside those paths is read while
+    // linking.
+    //
+    // Test, bench, and example files are deliberately not inputs. Nothing under tests/, benches/,
+    // or examples/ is compiled into the cdylib, so editing one cannot change librust_archive.so
+    // and should not cost a rebuild of it. The vendored members are declared manifest plus src/ for
+    // the same reason, which is a change from tracking their whole directories: their READMEs,
+    // PATCHES.md, and tests are not inputs either.
     inputs.file(new File(libarchiveRsDirectory.get(), 'Cargo.toml'))
     inputs.file(new File(libarchiveRsDirectory.get(), 'Cargo.lock'))
+    inputs.file(new File(libarchiveRsDirectory.get(), 'libarchive/Cargo.toml'))
+    inputs.dir(new File(libarchiveRsDirectory.get(), 'libarchive/src'))
+    inputs.file(new File(libarchiveRsDirectory.get(), 'jni/Cargo.toml'))
+    inputs.dir(new File(libarchiveRsDirectory.get(), 'jni/src'))
+    inputs.file(new File(libarchiveRsDirectory.get(), 'vendor/unarc-rs/Cargo.toml'))
+    inputs.dir(new File(libarchiveRsDirectory.get(), 'vendor/unarc-rs/src'))
+    inputs.file(new File(libarchiveRsDirectory.get(), 'vendor/sevenz-rust2/Cargo.toml'))
+    inputs.dir(new File(libarchiveRsDirectory.get(), 'vendor/sevenz-rust2/src'))
+
+    // Guard on the input list above: every workspace member's manifest and sources must be declared,
+    // or a change to one of them leaves this task UP-TO-DATE and ships the previous binary. The
+    // member list is read out of the library's workspace manifest, so a crate added there later
+    // cannot be invisible. Runs when the task is configured, so it catches an under-declared input
+    // even on an invocation where the task would have done nothing.
+    def workspaceMemberManifest = new File(libarchiveRsDirectory.get(), 'Cargo.toml')
+    if (workspaceMemberManifest.isFile()) {
+        def memberList = workspaceMemberManifest.getText('UTF-8') =~ /(?sm)^\s*members\s*=\s*\[(.*?)\]/
+        if (!memberList.find()) {
+            throw new GradleException("No workspace member list found in ${workspaceMemberManifest}, " +
+                    'so buildRustArchive cannot check its inputs against it.')
+        }
+        def workspaceMembers = (memberList.group(1) =~ /"([^"]+)"/).collect { it[1] }
+        // inputs.file(...) registers the path and inputs.dir(...) the files under it, so a path is
+        // covered when it is itself declared or a file beneath it is.
+        def declaredInputs = inputs.files.files.collect { it.canonicalFile } as Set
+        def covers = { File path ->
+            declaredInputs.any { it == path || it.path.startsWith(path.path + File.separator) }
+        }
+        def untracked = workspaceMembers.findResults { member ->
+            def memberDirectory = new File(libarchiveRsDirectory.get(), member).canonicalFile
+            def missing = [new File(memberDirectory, 'Cargo.toml'), new File(memberDirectory, 'src')]
+                    .findAll { it.exists() && !covers(it) }
+            missing.isEmpty() ? null : missing
+        }.flatten()
+        if (!untracked.isEmpty()) {
+            throw new GradleException("buildRustArchive does not declare ${untracked} as inputs, " +
+                    'so editing them would leave the task UP-TO-DATE and the archive stale. Every ' +
+                    'workspace member needs its Cargo.toml and its src/ directory declared.')
+        }
+    }
+
     // Guard on rustArchiveProfile above. Cargo is perfectly happy to be told `--profile` a profile
     // that does not exist: it treats an unknown profile name as a custom one with default
     // settings, which means `panic` falls back to `unwind` by accident rather than by decision, or
