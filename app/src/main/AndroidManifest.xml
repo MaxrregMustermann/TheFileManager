@@ -61,6 +61,11 @@
         android:usesCleartextTraffic="true"
         tools:ignore="GoogleAppIndexingWarning,UnusedAttribute">
 
+             gets its own launcher alias carrying that name. All of them are declared enabled
+             because a disabled alias makes Android 7 fail to install this app's content providers;
+             AppNameInitializer turns the unused ones off once startup has finished, leaving one
+             launcher entry named after the setting. The activity itself keeps no LAUNCHER filter,
+             or the launcher would show one icon per alias. -->
         <activity
             android:name="fork.MaxrregMustermann.TheFileManager.filelist.FileListActivity"
             android:exported="true"

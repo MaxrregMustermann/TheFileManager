@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019 Hai Zhang <dreaming.in.code.zh@gmail.com>
+ * Copyright (c) 2026 MaxrregMustermann <MaxrregMustermann@airmail.cc>
  * All Rights Reserved.
  */
 

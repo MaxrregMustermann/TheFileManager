@@ -282,6 +282,21 @@ android {
         // Referenced from org.apache.mina.proxy.ProxyAuthException."
         warning 'InvalidPackage', 'MissingTranslation'
     }
+    signingConfigs {
+        // The keystore arrives from the environment so that the key itself never enters the
+        // repository. The release workflow supplies these; a local build leaves them unset and
+        // gets an unsigned APK, which is the honest result rather than one signed with the wrong
+        // identity. See docs/releasing.md.
+        release {
+            def keystorePath = System.getenv('SIGNING_KEYSTORE')
+            if (keystorePath != null) {
+                storeFile file(keystorePath)
+                storePassword System.getenv('SIGNING_STORE_PASSWORD')
+                keyAlias System.getenv('SIGNING_KEY_ALIAS')
+                keyPassword System.getenv('SIGNING_KEY_PASSWORD')
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled true
