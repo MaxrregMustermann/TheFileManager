@@ -53,6 +53,18 @@ jobs:
       - name: Install cargo-ndk
         run: cargo install cargo-ndk --locked
 
+      # cargo-ndk drives the cross-compilation, but the Android standard libraries still have to be
+      # installed for each target; rustup's toolchain action does not add them on its own, and the
+      # failure otherwise only shows up once cargo is already running.
+      - name: Install Android Rust targets
+        run: |
+          rustup target add \
+            aarch64-linux-android \
+            armv7-linux-androideabi \
+            x86_64-linux-android \
+            i686-linux-android
+
+
       # The Gradle build defaults to a checkout *beside* the app. That is true of the local
       # workspace but not of a CI runner, where the second checkout lands inside it, so the path is
       # passed explicitly rather than relying on the default resolving.
