@@ -47,6 +47,13 @@ jobs:
       - name: Install NDK
         run: sdkmanager "ndk;30.0.16248370"
 
+      # The Gradle build defaults to a checkout *beside* the app, which is true of a local
+      # workspace but not of a CI runner, so the path is passed explicitly instead.
+      - name: Resolve the archive library path
+        run: echo "LIBARCHIVE_RS_PATH=$GITHUB_WORKSPACE/libarchive-rs" >> "$GITHUB_ENV"
+        env:
+          LIBARCHIVE_RS_PATH: ${{ github.workspace }}/libarchive-rs
+
       # cargo-ndk drives the cross-compilation into the NDK toolchains.
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -55,6 +62,13 @@ jobs:
 
       - name: Install cargo-ndk
         run: cargo install cargo-ndk --locked
+
+      # The Gradle build defaults to a checkout *beside* the app. That is true of the local
+      # workspace but not of a CI runner, where the second checkout lands inside it, so the path is
+      # passed explicitly rather than relying on the default resolving.
+      - name: Export the archive library path
+        run: echo "LIBARCHIVE_RS_PATH=$GITHUB_WORKSPACE/libarchive-rs" >> "$GITHUB_ENV"
+
 
       - name: Cache Android SDK
         uses: actions/cache@v4
@@ -73,16 +87,16 @@ jobs:
           # The Rust library is built inside Gradle; keep its target directory off the runner's
           # small tmpfs and out of the repository.
           CARGO_TARGET_DIR: ${{ github.workspace }}/../cargo-target
-        run: ./gradlew :app:testDebugUnitTest --stacktrace
+        run: ./gradlew -PlibarchiveRsPath="$LIBARCHIVE_RS_PATH" :app:testDebugUnitTest --stacktrace
 
       - name: Run lint
-        run: ./gradlew :app:lint --stacktrace
+        run: ./gradlew -PlibarchiveRsPath="$LIBARCHIVE_RS_PATH" :app:lint --stacktrace
 
       - name: Build debug APK
-        run: ./gradlew :app:assembleDebug --stacktrace
+        run: ./gradlew -PlibarchiveRsPath="$LIBARCHIVE_RS_PATH" :app:assembleDebug --stacktrace
 
       - name: Build release APK
-        run: ./gradlew :app:assembleRelease --stacktrace
+        run: ./gradlew -PlibarchiveRsPath="$LIBARCHIVE_RS_PATH" :app:assembleRelease --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4

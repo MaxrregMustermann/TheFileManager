@@ -53,6 +53,20 @@ jobs:
       - name: Install cargo-ndk
         run: cargo install cargo-ndk --locked
 
+      # The Gradle build defaults to a checkout *beside* the app. That is true of the local
+      # workspace but not of a CI runner, where the second checkout lands inside it, so the path is
+      # passed explicitly rather than relying on the default resolving.
+      - name: Export the archive library path
+        run: echo "LIBARCHIVE_RS_PATH=$GITHUB_WORKSPACE/libarchive-rs" >> "$GITHUB_ENV"
+
+
+      # The Gradle build defaults to a checkout *beside* the app, which is true of a local
+      # workspace but not of a CI runner, so the path is passed explicitly instead.
+      - name: Resolve the archive library path
+        run: echo "LIBARCHIVE_RS_PATH=$GITHUB_WORKSPACE/libarchive-rs" >> "$GITHUB_ENV"
+        env:
+          LIBARCHIVE_RS_PATH: ${{ github.workspace }}/libarchive-rs
+
       # The keystore arrives as base64 in an encrypted secret and never touches the repository.
       # Nothing here prints it, and it is destroyed again in the cleanup step below.
       - name: Restore signing keystore
@@ -81,7 +95,7 @@ jobs:
           SIGNING_KEY_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           # The Rust library is built inside Gradle; keep its target directory off the runner.
           CARGO_TARGET_DIR: ${{ github.workspace }}/../cargo-target
-        run: ./gradlew :app:assembleRelease --stacktrace
+        run: ./gradlew -PlibarchiveRsPath="$LIBARCHIVE_RS_PATH" :app:assembleRelease --stacktrace
 
       - name: Check the APK is signed with the expected certificate
         env:
