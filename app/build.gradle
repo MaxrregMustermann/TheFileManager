@@ -309,7 +309,14 @@ android {
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-            signingConfig signingConfigs.release
+            // Attached only when a keystore was supplied. Assigning an empty signing config instead
+            // fails validateSigningRelease with "Keystore file not set", which would stop CI from
+            // building the release variant at all; the build workflow deliberately has no key and
+            // gets an unsigned APK it can compile, test and lint, while the release workflow
+            // supplies one and gets a signed APK.
+            if (System.getenv('SIGNING_KEYSTORE') != null) {
+                signingConfig signingConfigs.release
+            }
         }
     }
     sourceSets {
