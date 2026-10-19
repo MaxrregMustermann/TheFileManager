@@ -78,9 +78,16 @@ def rustNdkDirectory = providers.provider {
         propertiesFile.withInputStream { sdkDirectory.load(it) }
     }
     def sdkPath = sdkDirectory.getProperty('sdk.dir')
+    // local.properties is a per-machine file and is not checked in, so it does not exist on a CI
+    // runner. Every runner sets ANDROID_HOME (ANDROID_SDK_ROOT for the older images), and that is
+    // the same directory sdk.dir points at locally, so the environment is consulted as well.
     if (sdkPath == null) {
-        throw new GradleException('sdk.dir is not set in local.properties, so the NDK the Rust ' +
-                'archive library needs cannot be found.')
+        sdkPath = System.getenv('ANDROID_HOME') ?: System.getenv('ANDROID_SDK_ROOT')
+    }
+    if (sdkPath == null) {
+        throw new GradleException('The Android SDK location is unknown: neither sdk.dir in ' +
+                'local.properties nor ANDROID_HOME is set, so the NDK the Rust archive library ' +
+                'needs cannot be found.')
     }
     file("$sdkPath/ndk/${libs.versions.ndk.get()}").absolutePath
 }
